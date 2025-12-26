@@ -3,24 +3,20 @@ import random
 from flask import Flask, render_template, request, send_from_directory
 from flask_socketio import SocketIO, emit, join_room
 
-# 1. إعداد التطبيق (رجعناه للوضع الطبيعي عشان يشوف مجلد templates)
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'el_3watly_secret'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# 2. كود سحري: عشان الصور تظهر من المجلد الرئيسي
+# السماح بظهور الصور
 @app.route('/<path:filename>')
 def serve_file(filename):
-    # السيرفر هيدور على الصور في المجلد الرئيسي (.)
     return send_from_directory(os.getcwd(), filename)
 
-# 3. الصفحة الرئيسية
 @app.route('/')
 def index():
     return render_template('index.html')
 
-# --- باقي كود اللعبة (المنطق واللعب) ---
-
+# --- بيانات اللعبة ---
 PUNISHMENTS = [
     "ارقص بلدي 💃", "قلد صوت فرخة 🐔", "اعمل مذيع كورة 🎤", 
     "غني فويس نوت 🐥", "مشية عسكرية 💂‍♂️", "قصيدة في الكشري 🍲",
@@ -43,12 +39,14 @@ def on_join(data):
     room = data.get('room')
     userImg = data.get('userImg', '')
     sid = request.sid
+    
     if not username or not room: return
     
     join_room(room)
-    if room not in rooms: rooms[room] = {'players': [], 'current_spy': None}
+    if room not in rooms: 
+        rooms[room] = {'players': [], 'current_spy': None, 'votes': set()}
     
-    # تحديث اللاعب
+    # تحديث اللاعبين
     rooms[room]['players'] = [p for p in rooms[room]['players'] if p['name'] != username]
     rooms[room]['players'].append({'sid': sid, 'name': username, 'img': userImg})
     
@@ -60,6 +58,9 @@ def on_disconnect():
     for room in list(rooms.keys()):
         if room in rooms:
             rooms[room]['players'] = [p for p in rooms[room]['players'] if p['sid'] != sid]
+            # لو حد خرج نشيل صوته عشان اللعبة متقفش
+            if sid in rooms[room]['votes']:
+                rooms[room]['votes'].remove(sid)
             emit_player_list(room)
 
 def emit_player_list(room):
@@ -78,6 +79,10 @@ def on_start(data):
             emit('error_msg', 'لازم 3 لاعبين!', to=request.sid)
             return
 
+        # تصفير الأصوات مع بداية الجيم
+        rooms[room]['votes'] = set()
+        emit('reset_vote_ui', to=room)
+
         items_list = GAME_DATA.get(category, GAME_DATA['أماكن 🌍'])
         chosen_item = random.choice(items_list)
         spy_player = random.choice(players)
@@ -93,18 +98,42 @@ def on_start(data):
             
             emit('game_started', info, to=player['sid'])
 
-@socketio.on('reveal_spy')
-def on_reveal(data):
+# --- التعديل الجديد: طلب الكشف ---
+@socketio.on('request_reveal')
+def on_request_reveal(data):
     room = data['room']
+    sid = request.sid
+    
+    if room in rooms:
+        # تسجيل صوت اللاعب
+        rooms[room]['votes'].add(sid)
+        
+        current_votes = len(rooms[room]['votes'])
+        total_players = len(rooms[room]['players'])
+        
+        # لو الكل وافق (أو ممكن تخليها > total_players / 2 للأغلبية)
+        if current_votes >= total_players:
+            reveal_logic(room)
+        else:
+            # تحديث العداد للناس
+            emit('vote_update', {'current': current_votes, 'total': total_players}, to=room)
+
+def reveal_logic(room):
     if room in rooms and rooms[room].get('current_spy'):
         emit('show_result', {
             'spy': rooms[room]['current_spy'], 
             'punishment': random.choice(PUNISHMENTS)
         }, to=room)
+        # تصفير الأصوات للجولة الجاية
+        rooms[room]['votes'] = set()
 
 @socketio.on('reset_game')
 def on_reset(data):
-    emit('reset_view', to=data['room'])
+    room = data['room']
+    if room in rooms:
+        rooms[room]['votes'] = set()
+    emit('reset_view', to=room)
+    emit('reset_vote_ui', to=room)
 
 if __name__ == '__main__':
     socketio.run(app)
