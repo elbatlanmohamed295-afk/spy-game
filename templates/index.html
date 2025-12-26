@@ -1,1 +1,238 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>بني أدمين وبرص 🦎</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Cairo', sans-serif; background-color: #1a1a1a; color: #fff; text-align: center; padding: 10px; margin: 0; }
+        .container { max-width: 450px; margin: 20px auto; background: #2d2d2d; padding: 20px; border-radius: 20px; border: 2px solid #ffd700; box-shadow: 0 0 15px rgba(255, 215, 0, 0.2); }
+        h1 { color: #ffd700; margin-bottom: 20px; }
+        input, button, select { width: 100%; padding: 15px; margin: 8px 0; border-radius: 10px; border: none; font-size: 16px; box-sizing: border-box; }
+        
+        button { cursor: pointer; font-weight: bold; transition: 0.2s; }
+        button:active { transform: scale(0.98); }
+        
+        .btn-join { background: linear-gradient(45deg, #ffd700, #e6ac00); color: #000; }
+        .btn-start { background: linear-gradient(45deg, #2ecc71, #27ae60); color: white; }
+        .btn-reveal { background: linear-gradient(45deg, #e74c3c, #c0392b); color: white; margin-top: 20px; }
+        .btn-reset { background: #555; color: white; }
+        
+        select { background-color: #444; color: white; border: 1px solid #666; cursor: pointer; }
+        
+        .player-list { list-style: none; padding: 0; text-align: right; }
+        .player-list li { background: #444; margin: 5px 0; padding: 10px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; }
+        .player-info { display: flex; align-items: center; }
+        .player-img { width: 45px; height: 45px; border-radius: 50%; margin-left: 10px; border: 2px solid #ffd700; object-fit: cover; }
+        
+        #lobby, #gameArea, #resultArea { display: none; }
+        
+        .card { background: #fff; color: #000; padding: 20px; border-radius: 15px; margin-top: 20px; position: relative; overflow: hidden; }
+        .card::after { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 5px; background: #ffd700; }
+        
+        .punishment-box { background: #c0392b; color: white; padding: 15px; border-radius: 10px; margin-top: 15px; border: 2px dashed #fff; }
+        
+        .role-spy { color: #c0392b; font-size: 2em; font-weight: 900; }
+        .role-citizen { color: #27ae60; font-size: 2em; font-weight: 900; }
+    </style>
+</head>
+<body>
 
+    <div class="container">
+        <h1>🦎 بني أدمين وبرص</h1>
+
+        <div id="loginArea">
+            <label style="display:block; text-align: right; margin-bottom: 5px;">اختار اسمك يا كبير:</label>
+            <select id="usernameSelect">
+                <option value="" disabled selected>-- مين حضرتك؟ --</option>
+                <option value="محمد رمضان">محمد رمضان</option>
+                <option value="أحمد حمدي">أحمد حمدي</option>
+                <option value="أمين محمد">أمين محمد</option>
+                <option value="إبراهيم محمود">إبراهيم محمود</option>
+                <option value="أحمد الدهشوري">أحمد الدهشوري</option>
+                <option value="يوسف محمد">يوسف محمد</option>
+                <option value="عبد القادر محمود">عبد القادر محمود</option>
+                <option value="ضيف جديد">ضيف جديد</option>
+            </select>
+            
+            <input type="text" id="customName" placeholder="اكتب اسمك هنا" style="display:none;">
+            <input type="number" id="room" placeholder="رقم الغرفة (اتفقوا عليه)" value="777">
+            <button class="btn-join" onclick="joinGame()">يالا بينا 🚀</button>
+        </div>
+
+        <div id="lobby">
+            <h3>الغرفة: <span id="roomNameDisplay"></span></h3>
+            <p>عدد الموجودين: <span id="countDisplay" style="color:#ffd700; font-weight:bold;">0</span></p>
+            
+            <p style="text-align: right;">هنلعب على إيه؟</p>
+            <select id="categorySelect">
+                <option value="أماكن 🌍">أماكن 🌍</option>
+                <option value="أكلات 🥘">أكلات 🥘</option>
+                <option value="مشاهير 🌟">مشاهير 🌟</option>
+                <option value="ملابس 👕">ملابس 👕</option>
+                <option value="أشياء منزلية 🏠">أشياء منزلية 🏠</option>
+            </select>
+
+            <ul id="playersList" class="player-list"></ul>
+            <button class="btn-start" onclick="startGame()">ابدأ الجيم 🔥</button>
+        </div>
+
+        <div id="gameArea">
+            <div class="card">
+                <div style="font-size: 0.9em; color: #555; margin-bottom: 10px;">التصنيف: <span id="categoryDisplay"></span></div>
+                <p>دورك:</p>
+                <div id="roleDisplay"></div>
+                <hr style="border-top: 1px dashed #ccc; margin: 15px 0;">
+                <p>المطلوب:</p>
+                <h2 id="itemDisplay" style="font-size: 1.8em;"></h2>
+            </div>
+            <br>
+            <button class="btn-reveal" onclick="revealSpy()">😱 قفشنا البرص! (كشف)</button>
+        </div>
+
+        <div id="resultArea">
+            <h2>🚨 تم كشف البرص! 🚨</h2>
+            <div class="card" style="background: #222; color: #fff; border: 1px solid #ffd700;">
+                <p>البرص هو:</p>
+                <img id="spyImg" src="" style="width: 120px; height: 120px; border-radius: 50%; border: 4px solid #c0392b; margin-bottom: 10px;">
+                <h1 id="spyName" style="color: #c0392b; margin: 0;"></h1>
+                
+                <div class="punishment-box">
+                    <h3>💀 العقاب:</h3>
+                    <p id="punishmentText" style="font-size: 1.3em; font-weight: bold;"></p>
+                </div>
+            </div>
+            <button class="btn-reset" onclick="resetGame()" style="margin-top:20px;">🔄 دور كمان</button>
+        </div>
+    </div>
+
+    <script>
+        // ربط الأسماء بملفات الصور (بعد ما تغير أسمائهم لأرقام)
+        const userImages = {
+            "محمد رمضان": "1.jpeg",
+            "أحمد حمدي": "2.jpeg",
+            "أمين محمد": "3.jpeg",
+            "إبراهيم محمود": "4.jpeg",
+            "أحمد الدهشوري": "5.jpeg",
+            "يوسف محمد": "6.jpeg",
+            "عبد القادر محمود": "7.jpeg",
+            "default": "https://cdn-icons-png.flaticon.com/512/847/847969.png"
+        };
+
+        const socket = io();
+        let currentUser = '';
+        let currentRoom = '';
+
+        // إظهار حقل الاسم للضيف
+        document.getElementById('usernameSelect').addEventListener('change', function() {
+            if(this.value === 'ضيف جديد') {
+                document.getElementById('customName').style.display = 'block';
+            } else {
+                document.getElementById('customName').style.display = 'none';
+            }
+        });
+
+        function joinGame() {
+            const selectVal = document.getElementById('usernameSelect').value;
+            currentUser = (selectVal === 'ضيف جديد') ? document.getElementById('customName').value : selectVal;
+            currentRoom = document.getElementById('room').value;
+            
+            if (!currentUser || !currentRoom) return alert("اختار اسمك يا ريس!");
+
+            // تحديد الصورة بناءً على الاسم المختار
+            const myImg = userImages[selectVal] || userImages['default'];
+
+            socket.emit('join', {username: currentUser, room: currentRoom, userImg: myImg});
+            
+            document.getElementById('loginArea').style.display = 'none';
+            document.getElementById('lobby').style.display = 'block';
+            document.getElementById('roomNameDisplay').innerText = currentRoom;
+        }
+
+        function startGame() {
+            socket.emit('start_game', {
+                room: currentRoom, 
+                category: document.getElementById('categorySelect').value
+            });
+        }
+
+        function revealSpy() {
+            if(confirm("متأكدين إنكم قفشتوه؟ اللعبة هتخلص وهيبان مين البرص!")) {
+                socket.emit('reveal_spy', {room: currentRoom});
+            }
+        }
+
+        function resetGame() {
+            socket.emit('reset_game', {room: currentRoom});
+        }
+
+        // تحديث القائمة
+        socket.on('update_player_list', function(data) {
+            document.getElementById('countDisplay').innerText = data.count;
+            const list = document.getElementById('playersList');
+            list.innerHTML = '';
+            
+            data.players.forEach(player => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <div class="player-info">
+                        <img src="${player.img}" class="player-img" onerror="this.src='https://cdn-icons-png.flaticon.com/512/847/847969.png'">
+                        <span style="font-weight:bold; font-size:1.1em;">${player.name}</span>
+                    </div>
+                `;
+                if(player.name === currentUser) {
+                    li.style.borderRight = "5px solid #ffd700";
+                    li.style.background = "#555";
+                }
+                list.appendChild(li);
+            });
+        });
+
+        // بدء اللعبة
+        socket.on('game_started', function(data) {
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('resultArea').style.display = 'none';
+            document.getElementById('gameArea').style.display = 'block';
+
+            document.getElementById('categoryDisplay').innerText = data.category;
+            const roleDiv = document.getElementById('roleDisplay');
+            const itemDiv = document.getElementById('itemDisplay');
+
+            roleDiv.innerText = data.role;
+            itemDiv.innerText = data.item;
+
+            if (data.is_spy) {
+                roleDiv.className = 'role-spy';
+                itemDiv.style.color = '#ccc';
+            } else {
+                roleDiv.className = 'role-citizen';
+                itemDiv.style.color = '#333';
+            }
+        });
+
+        // النتيجة والعقاب
+        socket.on('show_result', function(data) {
+            document.getElementById('gameArea').style.display = 'none';
+            document.getElementById('resultArea').style.display = 'block';
+            
+            document.getElementById('spyName').innerText = data.spy;
+            document.getElementById('punishmentText').innerText = data.punishment;
+            
+            // محاولة عرض صورة الجاسوس
+            const spyImageSrc = userImages[data.spy] || userImages['default'];
+            document.getElementById('spyImg').src = spyImageSrc;
+        });
+
+        socket.on('reset_view', function() {
+            document.getElementById('resultArea').style.display = 'none';
+            document.getElementById('lobby').style.display = 'block';
+        });
+
+        socket.on('error_msg', function(msg) {
+            alert(msg);
+        });
+    </script>
+</body>
+</html>
