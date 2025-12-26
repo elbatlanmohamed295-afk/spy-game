@@ -2,7 +2,7 @@ import random
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit, join_room
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='.', static_folder='.')
 app.config['SECRET_KEY'] = 'el_3watly_secret'
 
 # الحل هنا: زيادة حجم البيانات المسموح بها إلى 10 ميجابايت لاستقبال الصور
@@ -122,4 +122,5 @@ def on_reset(data):
 
 if __name__ == '__main__':
     # تشغيل السيرفر
+
     socketio.run(app, debug=True, host='0.0.0.0')
