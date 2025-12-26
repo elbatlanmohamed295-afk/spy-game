@@ -1,5 +1,5 @@
 import random
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, send_from_directory
 from flask_socketio import SocketIO, emit, join_room
 
 app = Flask(__name__, template_folder='.', static_folder='.')
@@ -33,9 +33,9 @@ GAME_DATA = {
 
 rooms = {}
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+@app.route('/<path:filename>')
+def serve_static_files(filename):
+    return send_from_directory('.', filename)
 
 @socketio.on('join')
 def on_join(data):
@@ -124,3 +124,4 @@ if __name__ == '__main__':
     # تشغيل السيرفر
 
     socketio.run(app, debug=True, host='0.0.0.0')
+
