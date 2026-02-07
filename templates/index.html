@@ -2,272 +2,319 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>بني أدمين وبرص 🦎 PRO</title>
-    <link rel="icon" href="/logo.png" type="image/png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لعبة البرص 🦎 PRO</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
-        /* إعدادات الألوان والتصميم الأساسي */
-        :root { --gold: #ffd700; --dark: #121212; --card: #1e1e1e; --spy: #ff4757; --green: #2ecc71; }
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
-        body { font-family: 'Cairo', sans-serif; background: var(--dark); color: #fff; margin: 0; padding: 15px; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-        
-        .container { width: 100%; max-width: 500px; background: var(--card); padding: 20px; border-radius: 25px; box-shadow: 0 10px 40px rgba(0,0,0,0.7); border: 1px solid #333; }
-        h1 { color: var(--gold); text-align: center; margin-bottom: 20px; text-shadow: 0 0 15px rgba(255, 215, 0, 0.2); }
-
-        /* أزرار ومداخل */
-        input, select, button { width: 100%; padding: 15px; margin-bottom: 12px; border-radius: 12px; border: 2px solid #333; font-family: 'Cairo'; font-size: 16px; transition: 0.3s; }
-        input, select { background: #2c2c2c; color: #fff; }
-        button { font-weight: 900; cursor: pointer; border: none; }
-        button:active { transform: scale(0.96); }
-        .btn-join { background: var(--gold); color: #000; box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3); }
-        .btn-start { background: var(--green); color: #fff; }
-        .btn-reveal { background: var(--spy); color: #fff; }
-
-        /* شبكة اختيار الأصدقاء (حل مشكلة الأسماء) */
-        .friends-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
-        .friend-card { 
-            background: #2a2a2a; border-radius: 15px; padding: 10px 5px; 
-            text-align: center; cursor: pointer; border: 2px solid transparent; transition: 0.2s;
+        :root {
+            --gold: #ffb700; --dark: #0f0f13; --card: #1c1c24; 
+            --spy: #ff4757; --human: #2ecc71; --blue: #3742fa;
         }
-        .friend-card img { width: 50px; height: 50px; border-radius: 50%; object-fit: cover; margin-bottom: 5px; border: 2px solid #555; }
-        .friend-card span { display: block; font-size: 11px; line-height: 1.3; font-weight: bold; color: #ddd; }
+        * { box-sizing: border-box; transition: all 0.3s ease; }
+        body { 
+            font-family: 'Cairo', sans-serif; background: var(--dark); color: #fff; 
+            margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; 
+            overflow-x: hidden;
+        }
+        .container { 
+            width: 100%; max-width: 480px; background: var(--card); padding: 25px; 
+            border-radius: 30px; border: 1px solid #333; box-shadow: 0 20px 50px rgba(0,0,0,0.5); 
+            position: relative; overflow: hidden;
+        }
         
-        /* تأثير الاختيار */
-        .friend-card.selected { border-color: var(--gold); background: rgba(255, 215, 0, 0.1); transform: translateY(-3px); }
-        .friend-card.selected img { border-color: var(--gold); }
-        .friend-card.selected span { color: var(--gold); }
-
-        /* القائمة داخل اللوبي */
-        .player-item { display: flex; align-items: center; gap: 10px; background: #2a2a2a; padding: 8px 12px; border-radius: 10px; margin-bottom: 8px; border: 1px solid #333; }
-        .player-img-sm { width: 35px; height: 35px; border-radius: 50%; object-fit: cover; border: 1px solid var(--gold); }
-
-        /* كارت اللعب */
-        .game-card { background: linear-gradient(135deg, #fff, #eee); color: #000; padding: 30px; border-radius: 20px; margin: 20px 0; text-align: center; box-shadow: 0 10px 20px rgba(0,0,0,0.5); animation: popUp 0.5s; }
-        @keyframes popUp { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-
-        /* شاشة النتيجة */
-        .result-box { text-align: center; animation: fadeIn 0.5s; }
-        .spy-avatar { width: 120px; height: 120px; border-radius: 50%; border: 5px solid var(--spy); margin: 15px auto; display: block; object-fit: cover; }
+        /* Typography */
+        h1, h2, h3 { text-align: center; margin: 0 0 15px 0; }
+        h1 { color: var(--gold); text-shadow: 0 0 10px rgba(255, 183, 0, 0.3); font-size: 2rem; }
         
-        .hidden { display: none !important; }
-        #toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(255,215,0,0.9); color: #000; padding: 10px 20px; border-radius: 20px; display: none; z-index: 100; font-weight: bold; width: 90%; text-align: center;}
+        /* Inputs & Buttons */
+        .input-group { margin-bottom: 15px; }
+        input, select { 
+            width: 100%; padding: 15px; background: #2c2c35; border: 2px solid #333; 
+            border-radius: 12px; color: #fff; font-family: 'Cairo'; font-size: 1.1rem; outline: none;
+        }
+        input:focus { border-color: var(--gold); }
+        
+        button { 
+            width: 100%; padding: 15px; border: none; border-radius: 12px; 
+            font-weight: 900; font-size: 1.2rem; cursor: pointer; transform: scale(1);
+        }
+        button:active { transform: scale(0.95); }
+        .btn-main { background: var(--gold); color: #000; box-shadow: 0 5px 15px rgba(255, 183, 0, 0.2); }
+        .btn-vote { background: var(--spy); color: #fff; margin-top: 10px; }
+        .btn-secondary { background: #333; color: #ccc; }
+
+        /* Avatars Grid */
+        .avatar-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+        .avatar-option { 
+            width: 100%; aspect-ratio: 1; border-radius: 50%; cursor: pointer; 
+            border: 2px solid transparent; opacity: 0.6;
+        }
+        .avatar-option:hover, .avatar-option.selected { opacity: 1; border-color: var(--gold); transform: scale(1.1); }
+
+        /* Screens Logic */
+        .screen { display: none; animation: fadeIn 0.5s; }
+        .screen.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Player List */
+        .player-item { 
+            display: flex; align-items: center; background: #252530; padding: 10px; 
+            border-radius: 15px; margin-bottom: 8px; border: 1px solid #333;
+        }
+        .player-img { width: 45px; height: 45px; border-radius: 50%; margin-left: 10px; object-fit: cover; }
+        .player-name { flex-grow: 1; font-weight: bold; }
+        .badge { font-size: 0.8rem; padding: 2px 8px; border-radius: 5px; background: #333; }
+
+        /* Game Card */
+        .game-card { 
+            background: linear-gradient(135deg, #fff, #ddd); color: #000; padding: 30px; 
+            border-radius: 20px; text-align: center; margin: 20px 0; 
+            box-shadow: 0 10px 30px rgba(255,255,255,0.1);
+        }
+        .role-title { font-size: 1.5rem; font-weight: 900; margin-bottom: 10px; }
+        .location-text { font-size: 2.5rem; color: var(--blue); font-weight: 900; }
+        .spy-text { font-size: 2.5rem; color: var(--spy); }
+
+        /* Timer */
+        .timer-box { font-size: 2rem; text-align: center; color: var(--gold); font-weight: bold; margin: 20px 0; }
+
+        /* Results */
+        .result-box { text-align: center; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 15px; }
+        .punishment { color: var(--spy); font-size: 1.3rem; margin-top: 15px; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <div id="toast"></div>
-    <div class="container">
-        <h1>🦎 بني أدمين وبرص</h1>
-
-        <div id="loginArea">
-            <h3 style="text-align:center; color:#888; margin-top:0;">مين اللي بيلعب؟</h3>
-            
-            <div class="friends-grid" id="friendsGrid">
-                </div>
-
-            <div id="guestInput" class="hidden">
-                <input type="text" id="customName" placeholder="اكتب اسمك يا ضيف...">
-            </div>
-
-            <input type="number" id="room" placeholder="رقم الغرفة" value="777" style="text-align:center; letter-spacing: 2px; font-weight:bold;">
-            <button class="btn-join" onclick="join()">يالا بينا 🚀</button>
+<div class="container">
+    <div id="login-screen" class="screen active">
+        <h1>لعبة البرص 🦎</h1>
+        <div class="input-group">
+            <input type="text" id="username" placeholder="اكتب اسمك يا فنان...">
         </div>
-
-        <div id="lobby" class="hidden">
-            <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
-                <span>الغرفة: <b id="rId" style="color:var(--gold)"></b></span>
-                <span>العدد: <b id="count">0</b></span>
-            </div>
-            <select id="cat">
-                <option>أماكن 🌍</option><option>أكلات 🥘</option><option>مشاهير 🌟</option>
-                <option>أفلام 🎬</option><option>وظائف 👷</option>
-            </select>
-            <div id="pList" style="margin:15px 0;"></div>
-            <button class="btn-start" onclick="start()">ابدأ الجيم 🔥</button>
+        <div class="input-group">
+            <input type="text" id="roomCode" placeholder="اسم الغرفة (مثلاً: شبرا)">
         </div>
-
-        <div id="gameArea" class="hidden">
-            <div class="game-card">
-                <h3 id="role" style="margin:0; opacity:0.7;"></h3>
-                <h1 id="item" style="font-size:2.5em; margin:10px 0;"></h1>
+        <p style="text-align: center; color: #888;">اختر صورتك:</p>
+        <div class="avatar-grid" id="avatarList">
             </div>
-            <button id="revBtn" class="btn-reveal" onclick="vote()">🚨 كشف الجاسوس</button>
-            <p id="vStat" class="hidden" style="text-align:center; margin:10px 0;">الأصوات: <span id="vCount" style="color:var(--gold)">0</span></p>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 15px;">
-                <button onclick="shout('شاكك فيك! 👀')" style="background:#333; color:var(--gold); padding:10px; font-size:12px;">شاكك فيك! 👀</button>
-                <button onclick="shout('والله بريء 😇')" style="background:#333; color:var(--gold); padding:10px; font-size:12px;">والله بريء 😇</button>
-                <button onclick="shout('البرص بان 😂')" style="background:#333; color:var(--gold); padding:10px; font-size:12px;">البرص بان 😂</button>
-                <button onclick="shout('وشك مش مريح 🤨')" style="background:#333; color:var(--gold); padding:10px; font-size:12px;">وشك مش مريح 🤨</button>
-            </div>
-        </div>
-
-        <div id="resultArea" class="hidden">
-            <div class="result-box">
-                <h2 style="color:var(--spy);">قفشنا البرص! 🦎</h2>
-                <img id="spyImg" class="spy-avatar" src="">
-                <h2 id="spyName"></h2>
-                <div style="background:rgba(255,71,87,0.1); border:1px solid var(--spy); padding:15px; border-radius:15px; margin:15px 0;">
-                    <b>☠️ العقاب:</b> <span id="pun"></span>
-                </div>
-                <button class="btn-join" onclick="reset()">🔄 دور كمان</button>
-            </div>
-        </div>
+        <button class="btn-main" onclick="joinGame()">دخول اللعبة 🚀</button>
     </div>
 
-    <script>
-        const socket = io();
+    <div id="lobby-screen" class="screen">
+        <h2>غرفة: <span id="lobby-room-name" style="color: var(--gold)"></span></h2>
+        <div id="players-list"></div>
+        <br>
+        <div id="host-controls" style="display:none;">
+            <select id="category-select">
+                <option value="أماكن 🌍">أماكن 🌍</option>
+                <option value="أكلات 🥘">أكلات 🥘</option>
+                <option value="أفلام ومسلسلات 🎬">أفلام ومسلسلات 🎬</option>
+                <option value="أشياء في البيت 🏠">أشياء في البيت 🏠</option>
+            </select>
+            <button class="btn-main" onclick="startGame()">ابداً اللعب 🎮</button>
+        </div>
+        <p id="waiting-msg" style="text-align: center; color: #777;">في انتظار "الأدمن" يبدأ...</p>
+    </div>
+
+    <div id="game-screen" class="screen">
+        <div class="timer-box" id="timer">05:00</div>
         
-        // 1. بيانات الشلة (كما طلبت بالضبط)
-        const friends = [
-            { name: "محمد رمضان", img: "1.jpeg" },
-            { name: "أحمد حمدي", img: "2.jpeg" },
-            { name: "أمين محمد", img: "3.jpeg" },
-            { name: "إبراهيم محمود", img: "4.jpeg" },
-            { name: "أحمد الدهشوري", img: "5.jpeg" },
-            { name: "يوسف محمد", img: "6.jpeg" },
-            { name: "عبد القادر محمود", img: "7.jpeg" },
-            { name: "ضيف جديد", img: "logo.png", isGuest: true }
-        ];
+        <div class="game-card" id="card-content">
+            </div>
 
-        let selectedUser = null;
-        let myName = '';
-        let myRoom = '';
+        <p style="text-align: center; font-size: 0.9rem; color: #aaa;">اسألوا بعض وحاولوا تكشفوا البرص!</p>
+        <button class="btn-vote" onclick="showVoting()">يلا نصوت ✋</button>
+    </div>
 
-        // توليد شبكة الأصدقاء تلقائياً
-        const grid = document.getElementById('friendsGrid');
-        friends.forEach(friend => {
-            let div = document.createElement('div');
-            div.className = 'friend-card';
-            div.innerHTML = `<img src="${friend.img}"><span>${friend.name}</span>`;
-            div.onclick = () => selectFriend(div, friend);
-            grid.appendChild(div);
-        });
+    <div id="vote-screen" class="screen">
+        <h2>مين البرص؟ 🧐</h2>
+        <div id="vote-list"></div>
+        <p id="vote-status" style="text-align: center; color: var(--gold)"></p>
+    </div>
 
-        function selectFriend(element, friendData) {
-            // إزالة التحديد السابق
-            document.querySelectorAll('.friend-card').forEach(el => el.classList.remove('selected'));
-            // إضافة التحديد الجديد
-            element.classList.add('selected');
-            selectedUser = friendData;
+    <div id="result-screen" class="screen">
+        <h1 id="win-status"></h1>
+        <div class="result-box">
+            <p>البرص كان: <strong id="real-spy" style="color: var(--spy); font-size: 1.5rem;"></strong></p>
+            <p>المكان كان: <strong id="real-location" style="color: var(--blue);"></strong></p>
+            <hr style="border-color: #444;">
+            <p class="punishment" id="punishment-text"></p>
+        </div>
+        <br>
+        <button class="btn-main" onclick="location.reload()">لعبة جديدة 🔄</button>
+    </div>
+</div>
+
+<script>
+    const socket = io();
+    let mySid = '';
+    let currentRoom = '';
+    let selectedAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140048.png'; // Default
+    let timerInterval;
+
+    // --- Setup UI ---
+    const avatars = [
+        "https://cdn-icons-png.flaticon.com/512/4140/4140048.png",
+        "https://cdn-icons-png.flaticon.com/512/4140/4140047.png",
+        "https://cdn-icons-png.flaticon.com/512/4140/4140037.png",
+        "https://cdn-icons-png.flaticon.com/512/4140/4140051.png",
+        "https://cdn-icons-png.flaticon.com/512/1999/1999625.png",
+        "https://cdn-icons-png.flaticon.com/512/4140/4140061.png",
+        "https://cdn-icons-png.flaticon.com/512/4140/4140077.png",
+        "https://cdn-icons-png.flaticon.com/512/924/924874.png"
+    ];
+    
+    const avatarContainer = document.getElementById('avatarList');
+    avatars.forEach(url => {
+        const img = document.createElement('img');
+        img.src = url;
+        img.className = 'avatar-option';
+        img.onclick = () => {
+            document.querySelectorAll('.avatar-option').forEach(el => el.classList.remove('selected'));
+            img.classList.add('selected');
+            selectedAvatar = url;
+        };
+        avatarContainer.appendChild(img);
+    });
+
+    // --- Functions ---
+    function switchScreen(id) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+    }
+
+    function joinGame() {
+        const username = document.getElementById('username').value;
+        currentRoom = document.getElementById('roomCode').value;
+        if(!username || !currentRoom) return alert("دخل بياناتك الأول يا نجم!");
+        
+        socket.emit('join', { username, room: currentRoom, userImg: selectedAvatar });
+        document.getElementById('lobby-room-name').innerText = currentRoom;
+        switchScreen('lobby-screen');
+    }
+
+    function startGame() {
+        const category = document.getElementById('category-select').value;
+        socket.emit('start_game', { room: currentRoom, category: category });
+    }
+
+    function showVoting() {
+        switchScreen('vote-screen');
+    }
+
+    function castVote(targetSid) {
+        socket.emit('vote_player', { room: currentRoom, targetSid: targetSid });
+        // Disable buttons visual feedback
+        document.getElementById('vote-list').innerHTML = '<h3 style="text-align:center">تم التصويت... في انتظار الباقي</h3>';
+    }
+
+    // --- Socket Listeners ---
+    socket.on('update_player_list', (data) => {
+        const list = document.getElementById('players-list');
+        const voteList = document.getElementById('vote-list');
+        list.innerHTML = '';
+        voteList.innerHTML = '';
+        
+        let amIHost = false;
+
+        data.players.forEach(p => {
+            if (p.sid === socket.id && p.isHost) amIHost = true;
             
-            // لو ضيف، أظهر خانة الكتابة
-            if(friendData.isGuest) {
-                document.getElementById('guestInput').classList.remove('hidden');
-            } else {
-                document.getElementById('guestInput').classList.add('hidden');
+            // قائمة الانتظار
+            list.innerHTML += `
+                <div class="player-item">
+                    <img src="${p.img}" class="player-img">
+                    <span class="player-name">${p.name}</span>
+                    ${p.isHost ? '<span class="badge" style="color:#ffd700">Admin 👑</span>' : ''}
+                </div>`;
+
+            // قائمة التصويت (لا أصوت لنفسي)
+            if (p.sid !== socket.id) {
+                voteList.innerHTML += `
+                    <div class="player-item" onclick="castVote('${p.sid}')" style="cursor:pointer; border:1px solid #444;">
+                        <img src="${p.img}" class="player-img">
+                        <span class="player-name">صوّت ضد: ${p.name}</span>
+                    </div>`;
             }
+        });
+
+        if(amIHost) {
+            document.getElementById('host-controls').style.display = 'block';
+            document.getElementById('waiting-msg').style.display = 'none';
+        }
+    });
+
+    socket.on('game_started', (data) => {
+        switchScreen('game-screen');
+        const card = document.getElementById('card-content');
+        
+        if (data.role === 'spy') {
+            card.innerHTML = `
+                <div class="role-title">أنت البرص 🦎</div>
+                <div class="spy-text">أخفي نفسك!</div>
+                <p>حاول تعرف هما بيتكلموا عن ايه..</p>
+                <div style="background:#000; color:#fff; padding:5px; border-radius:5px; margin-top:10px;">القسم: ${data.category}</div>
+            `;
+        } else {
+            card.innerHTML = `
+                <div class="role-title">أنت بني آدم 🧔</div>
+                <div class="location-text">${data.location}</div>
+                <p>ماتفضحش المكان، بس اكشف البرص!</p>
+            `;
         }
 
-        function join() {
-            if(!selectedUser) { showToast("اختار اسمك الأول يا نجم!"); return; }
-            
-            myRoom = document.getElementById('room').value;
-            
-            if(selectedUser.isGuest) {
-                myName = document.getElementById('customName').value;
-                if(!myName) { showToast("اكتب اسمك يا ضيف!"); return; }
+        // Timer Logic
+        clearInterval(timerInterval);
+        const end = data.endTime * 1000;
+        timerInterval = setInterval(() => {
+            const now = Date.now();
+            const diff = end - now;
+            if (diff <= 0) {
+                clearInterval(timerInterval);
+                document.getElementById('timer').innerText = "00:00";
+                showVoting(); // Auto move to vote
             } else {
-                myName = selectedUser.name;
+                const m = Math.floor(diff / 60000);
+                const s = Math.floor((diff % 60000) / 1000);
+                document.getElementById('timer').innerText = `${m}:${s < 10 ? '0'+s : s}`;
             }
+        }, 1000);
+    });
 
-            if(!myRoom) { showToast("دخل رقم الغرفة!"); return; }
+    socket.on('error_msg', (data) => alert(data.msg));
 
-            // إرسال البيانات للسيرفر
-            socket.emit('join', { 
-                username: myName, 
-                room: myRoom, 
-                userImg: selectedUser.img // إرسال الصورة المختارة
-            });
+    socket.on('vote_update', (data) => {
+        document.getElementById('vote-status').innerText = `تم التصويت: ${data.votes} من ${data.total}`;
+        // لو الكل صوت، السيرفر ممكن يبعت النتيجة تلقائي أو الأدمن ينهي، 
+        // هنا هنعمل زرار للأدمن أو أي حد يطلب النتيجة
+        if(data.votes === data.total) {
+            socket.emit('reveal_result', { room: currentRoom });
+        }
+    });
 
-            switchScreen('lobby');
-            document.getElementById('rId').innerText = myRoom;
+    socket.on('game_over', (data) => {
+        switchScreen('result-screen');
+        const winTitle = document.getElementById('win-status');
+        
+        if (data.spyCaught) {
+            winTitle.innerHTML = "البشر كسبوا! 🎉";
+            winTitle.style.color = "var(--human)";
+        } else {
+            winTitle.innerHTML = "البرص هرب! 🦎";
+            winTitle.style.color = "var(--spy)";
         }
 
-        function start(){ socket.emit('start_game', {room: myRoom, category: document.getElementById('cat').value}); }
-        function vote(){ 
-            document.getElementById('revBtn').disabled = true; 
-            document.getElementById('revBtn').innerText = "تم التصويت...";
-            socket.emit('request_reveal', {room: myRoom}); 
+        document.getElementById('real-spy').innerText = data.spyName;
+        document.getElementById('real-location').innerText = data.location;
+        
+        if(data.spyCaught) {
+            document.getElementById('punishment-text').innerHTML = `العقاب لـ ${data.spyName}:<br>${data.punishment}`;
+        } else {
+            document.getElementById('punishment-text').innerHTML = `الضحية البريئة كان: ${data.victimName} 😢`;
         }
-        function shout(m){ socket.emit('send_shout', {room: myRoom, user: myName, msg: m}); }
-        function reset(){ socket.emit('reset_game', {room: myRoom}); }
+    });
 
-        // Socket Listeners
-        socket.on('update_player_list', d => {
-            document.getElementById('count').innerText = d.count;
-            document.getElementById('pList').innerHTML = d.players.map(p => 
-                `<div class="player-item">
-                    <img src="${p.img}" class="player-img-sm">
-                    <b style="font-size:14px;">${p.name}</b>
-                 </div>`
-            ).join('');
-        });
-
-        socket.on('game_started', d => {
-            switchScreen('gameArea');
-            const r = document.getElementById('role');
-            const i = document.getElementById('item');
-            
-            if(d.is_spy) {
-                r.innerText = "أنت البرص! 🦎";
-                r.style.color = "#ff4757";
-                i.innerText = "؟؟؟؟";
-                i.style.color = "#555";
-                if(window.navigator.vibrate) window.navigator.vibrate([200,100,200]);
-            } else {
-                r.innerText = "أنت مواطن 👮‍♂️";
-                r.style.color = "#2ecc71";
-                i.innerText = d.item;
-                i.style.color = "#ffd700";
-            }
-        });
-
-        socket.on('vote_update', d => {
-            document.getElementById('vStat').classList.remove('hidden');
-            document.getElementById('vCount').innerText = `${d.current}/${d.total}`;
-        });
-
-        socket.on('receive_shout', d => {
-            showToast(`${d.user}: ${d.msg}`);
-        });
-
-        socket.on('show_result', d => {
-            switchScreen('resultArea');
-            document.getElementById('spyName').innerText = d.spy;
-            document.getElementById('pun').innerText = d.punishment;
-            
-            // محاولة العثور على صورة الجاسوس من القائمة المحفوظة لدينا
-            let spyImage = "logo.png";
-            const knownSpy = friends.find(f => f.name === d.spy);
-            if(knownSpy) spyImage = knownSpy.img;
-            
-            // أو استخدام الصورة التي يرسلها السيرفر إن وجدت
-            if(d.spyImg) spyImage = d.spyImg;
-
-            document.getElementById('spyImg').src = spyImage;
-        });
-
-        socket.on('reset_view', () => {
-            switchScreen('lobby');
-            document.getElementById('revBtn').disabled = false;
-            document.getElementById('revBtn').innerText = "🚨 كشف الجاسوس";
-            document.getElementById('vStat').classList.add('hidden');
-        });
-
-        function switchScreen(id) {
-            ['loginArea', 'lobby', 'gameArea', 'resultArea'].forEach(i => document.getElementById(i).classList.add('hidden'));
-            document.getElementById(id).classList.remove('hidden');
-        }
-
-        function showToast(msg) {
-            const t = document.getElementById('toast');
-            t.innerText = msg;
-            t.style.display = 'block';
-            setTimeout(() => t.style.display = 'none', 3000);
-        }
-    </script>
+</script>
 </body>
 </html>
