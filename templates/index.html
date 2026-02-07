@@ -2,77 +2,89 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>لعبة البرص الذكية 🤖</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>لعبة البرص - Pro Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Cairo', sans-serif; }
-        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
-        .ai-glow { animation: glow 2s infinite alternate; }
-        @keyframes glow { from { box-shadow: 0 0 5px #00d2ff; } to { box-shadow: 0 0 20px #00d2ff, 0 0 10px #3a7bd5; } }
+        body { font-family: 'Cairo', sans-serif; touch-action: manipulation; }
+        .glass { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
         .card-flip { perspective: 1000px; }
         .card-inner { transition: transform 0.6s; transform-style: preserve-3d; }
         .flipped .card-inner { transform: rotateY(180deg); }
         .card-face { backface-visibility: hidden; }
         .card-back { transform: rotateY(180deg); }
+        
+        /* Chat Styles */
+        .chat-msg { animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 5px; }
     </style>
 </head>
-<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')]">
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]">
 
-    <div class="absolute top-5 flex items-center gap-3 animate-bounce">
-        <img src="/assets/logo.png" class="w-16 h-16 rounded-full border-4 border-blue-500 shadow-lg">
+    <div class="w-full p-4 flex justify-between items-center glass fixed top-0 z-50">
+        <div class="flex items-center gap-2">
+            <img src="/assets/logo.png" class="w-10 h-10 rounded-full border-2 border-blue-500">
+            <span class="font-bold text-lg hidden sm:block">Humans vs Gecko</span>
+        </div>
+        <div id="headerCode" class="font-mono text-yellow-400 font-bold text-xl"></div>
     </div>
 
-    <div class="w-full max-w-md p-4 relative z-10">
+    <div class="w-full max-w-lg p-4 mt-20 pb-32">
         
-        <div id="screen-login" class="glass rounded-3xl p-8 shadow-2xl">
-            <h2 class="text-2xl font-bold mb-6 text-center text-blue-400">مرحباً بك مجدداً 👋</h2>
-            <input type="text" id="username" placeholder="اسمك إيه؟" class="w-full bg-slate-800 border border-slate-600 rounded-xl p-4 mb-4 text-center text-lg focus:ring-2 focus:ring-blue-500 outline-none">
+        <div id="screen-login" class="glass rounded-2xl p-6 shadow-2xl">
+            <h2 class="text-2xl font-bold mb-6 text-center text-blue-400">تسجيل الدخول</h2>
+            <input type="text" id="username" placeholder="اسمك المستعار" class="w-full bg-slate-800 border border-slate-600 rounded-xl p-4 mb-4 text-center text-lg focus:outline-none focus:border-blue-500">
             
-            <button onclick="joinGame(true)" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 p-4 rounded-xl font-bold shadow-lg mb-4 transition transform active:scale-95">
+            <button onclick="joinGame(true)" class="w-full bg-blue-600 hover:bg-blue-500 p-4 rounded-xl font-bold shadow-lg mb-6 transition transform active:scale-95">
                 إنشاء غرفة جديدة 🚀
             </button>
             
-            <div class="flex gap-2 mt-4">
-                <input type="text" id="roomCodeInput" placeholder="كود الغرفة" class="w-2/3 bg-slate-800 border border-slate-600 rounded-xl p-4 text-center uppercase tracking-widest outline-none font-mono">
-                <button onclick="joinGame(false)" class="w-1/3 bg-slate-700 hover:bg-slate-600 rounded-xl font-bold transition">دخول</button>
+            <div class="relative flex py-2 items-center mb-4">
+                <div class="flex-grow border-t border-slate-600"></div>
+                <span class="flex-shrink mx-4 text-gray-500 text-sm">أو انضم لغرفة</span>
+                <div class="flex-grow border-t border-slate-600"></div>
             </div>
-            
-            <button onclick="clearData()" class="text-xs text-gray-500 mt-4 underline w-full text-center">نسيان بياناتي (تسجيل خروج)</button>
+
+            <div class="flex gap-2">
+                <input type="text" id="roomCodeInput" placeholder="كود الغرفة" class="w-2/3 bg-slate-800 border border-slate-600 rounded-xl p-4 text-center uppercase font-mono tracking-widest focus:outline-none">
+                <button onclick="joinGame(false)" class="w-1/3 bg-slate-700 hover:bg-slate-600 rounded-xl font-bold">دخول</button>
+            </div>
+            <button onclick="logout()" class="text-xs text-gray-500 mt-4 w-full">مسح بياناتي</button>
         </div>
 
-        <div id="screen-lobby" class="glass rounded-3xl p-6 hidden">
-            <div class="text-center mb-6">
+        <div id="screen-lobby" class="hidden">
+            <div class="glass rounded-2xl p-6 mb-4 text-center">
                 <p class="text-gray-400 text-sm">كود الغرفة</p>
-                <h1 id="lobbyCode" class="text-6xl font-black text-blue-400 tracking-widest my-2 cursor-pointer select-all">CODE</h1>
+                <h1 id="lobbyCode" class="text-5xl font-black text-blue-400 tracking-widest my-2 select-all">---</h1>
+                <p class="text-xs text-green-400 animate-pulse">في انتظار اللاعبين...</p>
             </div>
 
-            <div class="bg-slate-800/50 rounded-xl p-4 min-h-[100px] mb-4">
-                <h3 class="text-sm font-bold text-gray-400 mb-2">المتصلون الآن:</h3>
+            <div class="glass rounded-2xl p-4 mb-4">
+                <h3 class="text-sm font-bold text-gray-400 mb-3">اللاعبين المتصلين:</h3>
                 <div id="playersList" class="flex flex-wrap gap-2 justify-center"></div>
             </div>
 
-            <button id="startBtn" onclick="startGame()" class="w-full bg-green-600 hover:bg-green-500 p-4 rounded-xl font-bold shadow-lg hidden transition">
+            <button id="startBtn" onclick="startGame()" class="w-full bg-green-600 hover:bg-green-500 p-4 rounded-xl font-bold shadow-lg hidden mb-4 transition">
                 بدء اللعبة 🎮
             </button>
-            <p id="waitText" class="text-center text-gray-500 mt-4 animate-pulse">في انتظار الأدمن...</p>
         </div>
 
-        <div id="screen-game" class="hidden w-full">
-            
-            <div id="aiBubble" class="hidden mb-4 bg-gradient-to-r from-purple-900 to-slate-900 border border-purple-500 p-3 rounded-2xl rounded-tr-none shadow-lg ai-glow relative">
+        <div id="screen-game" class="hidden">
+            <div id="aiBubble" class="hidden mb-4 bg-gradient-to-r from-purple-900 to-slate-900 border border-purple-500 p-4 rounded-2xl shadow-lg relative animate-bounce">
                 <span class="absolute -top-3 -right-2 text-2xl">🤖</span>
-                <p id="aiText" class="text-sm font-bold text-purple-200">اقتراح الذكاء الاصطناعي...</p>
+                <p id="aiText" class="text-sm font-bold text-purple-200"></p>
             </div>
 
-            <div class="card-flip w-full h-56 cursor-pointer group mb-6" onclick="this.classList.toggle('flipped')">
+            <div class="card-flip w-full h-64 cursor-pointer group mb-6" onclick="this.classList.toggle('flipped')">
                 <div class="card-inner relative w-full h-full text-center rounded-2xl shadow-2xl">
                     <div class="card-face absolute w-full h-full bg-slate-800 rounded-2xl flex flex-col items-center justify-center border-2 border-slate-600">
-                        <span class="text-5xl mb-4">🔒</span>
-                        <h3 class="text-xl font-bold">اضغط لكشف دورك</h3>
+                        <span class="text-6xl mb-4">🕵️</span>
+                        <h3 class="text-xl font-bold">اضغط لكشف الدور</h3>
                     </div>
                     <div class="card-face card-back absolute w-full h-full bg-slate-900 rounded-2xl flex flex-col items-center justify-center border-2 border-blue-500 p-4">
                         <div id="roleContent"></div>
@@ -86,24 +98,36 @@
             <p id="timerText" class="text-center font-mono text-xl mb-6 text-blue-300">05:00</p>
 
             <div class="grid grid-cols-2 gap-3 mb-4">
-                <button onclick="toggleLocs()" class="bg-slate-700 p-3 rounded-xl text-sm hover:bg-slate-600 transition">🗺️ الأماكن</button>
-                <button onclick="reqPunish()" class="bg-red-900/80 text-red-200 p-3 rounded-xl text-sm hover:bg-red-800 transition">🎡 عقاب</button>
+                <button onclick="document.getElementById('locModal').classList.remove('hidden')" class="bg-slate-700 p-3 rounded-xl hover:bg-slate-600">🗺️ الأماكن</button>
+                <button onclick="reqPunish()" class="bg-red-900/80 text-red-100 p-3 rounded-xl hover:bg-red-800">🎡 عجلة العقاب</button>
             </div>
-            
-            <button id="aiBtn" onclick="triggerAI()" class="w-full bg-purple-600 hover:bg-purple-500 p-3 rounded-xl font-bold shadow-lg shadow-purple-900/50 mb-4 hidden">
-                🤖 اقتراح من الذكاء الاصطناعي
-            </button>
 
+            <button id="aiBtn" onclick="triggerAI()" class="w-full bg-purple-600 hover:bg-purple-500 p-3 rounded-xl font-bold shadow-lg mb-4 hidden">🤖 اقتراح سؤال ذكي</button>
             <button id="resetBtn" onclick="resetGame()" class="w-full bg-slate-800 border border-slate-600 text-gray-400 p-3 rounded-xl hidden">إنهاء اللعبة</button>
-
-            <div id="locModal" class="hidden fixed inset-0 bg-black/90 z-50 p-6 overflow-y-auto">
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="font-bold text-xl">الأماكن المحتملة</h3>
-                    <button onclick="toggleLocs()" class="text-red-500 text-2xl">✕</button>
-                </div>
-                <div id="locGrid" class="grid grid-cols-2 gap-3 text-sm text-gray-300"></div>
-            </div>
         </div>
+    </div>
+
+    <div id="chatArea" class="hidden fixed bottom-0 left-0 w-full glass z-40 rounded-t-2xl flex flex-col transition-all duration-300" style="height: 40vh;">
+        <div class="flex justify-between items-center p-2 border-b border-slate-700 bg-slate-900/50 rounded-t-2xl cursor-pointer" onclick="toggleChatHeight()">
+            <span class="text-xs font-bold text-gray-400 mx-2">💬 الشات المباشر</span>
+            <span class="text-xs text-blue-400">▼</span>
+        </div>
+        
+        <div id="chatMessages" class="flex-1 overflow-y-auto p-3 space-y-2 text-sm">
+            </div>
+
+        <div class="p-2 flex gap-2 bg-slate-900">
+            <input type="text" id="chatInput" placeholder="اكتب رسالة..." class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none" onkeypress="handleEnter(event)">
+            <button onclick="sendChat()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold">➤</button>
+        </div>
+    </div>
+
+    <div id="locModal" class="hidden fixed inset-0 bg-black/95 z-50 p-6 overflow-y-auto">
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="font-bold text-xl">الأماكن المحتملة</h3>
+            <button onclick="document.getElementById('locModal').classList.add('hidden')" class="text-red-500 text-2xl">✕</button>
+        </div>
+        <div id="locGrid" class="grid grid-cols-2 gap-3 text-sm text-gray-300"></div>
     </div>
 
     <script>
@@ -114,96 +138,90 @@
             code: localStorage.getItem('gm_code') || ""
         };
 
-        // --- Auto Login Logic ---
+        // --- Logic: Auto Login ---
         window.onload = () => {
             if(myData.userId && myData.code) {
                 document.getElementById('username').value = myData.name;
                 document.getElementById('roomCodeInput').value = myData.code;
-                // محاولة الاتصال التلقائي
-                joinGame(false); 
+                joinGame(false);
             }
         };
 
-        function clearData() {
+        function logout() {
             localStorage.clear();
             location.reload();
         }
 
-        // --- Main Functions ---
-        function joinGame(create) {
-            const name = document.getElementById('username').value;
-            const code = document.getElementById('roomCodeInput').value;
-            
-            if(!name) return Swal.fire('تنبيه', 'اكتب اسمك الأول!', 'warning');
-            
-            // حفظ البيانات محلياً
-            localStorage.setItem('gm_name', name);
-            if(!myData.userId) {
-                // لو مفيش ID ننشئ واحد عشوائي مؤقت لحد ما السيرفر يعتمدنا
-                // لكن الأفضل نعتمد على السيرفر، هنا سنرسل الاسم فقط
-            }
+        // --- Logic: Join/Create ---
+        function joinGame(isCreate) {
+            const name = document.getElementById('username').value.trim();
+            const codeInput = document.getElementById('roomCodeInput').value.trim();
 
+            if(!name) return Swal.fire('تنبيه', 'اكتب اسمك يا بطل!', 'warning');
+            
+            // الإصلاح: لو بنشأ غرفة جديدة، مش لازم يكون فيه كود
+            if(!isCreate && !codeInput) return Swal.fire('تنبيه', 'اكتب كود الغرفة!', 'warning');
+
+            // حفظ محلي
+            localStorage.setItem('gm_name', name);
+            
             socket.emit('join_game', {
                 name: name,
-                code: create ? null : code,
-                create: create,
-                userId: myData.userId // نرسل الـ ID المحفوظ لو موجود
+                code: isCreate ? null : codeInput,
+                create: isCreate,
+                userId: myData.userId
             });
         }
 
-        // --- Socket Events ---
+        // --- Events ---
         socket.on('join_success', data => {
-            // تحديث البيانات المحفوظة
+            // تحديث LocalStorage
             myData.userId = data.userId;
             myData.code = data.code;
             localStorage.setItem('gm_uid', data.userId);
             localStorage.setItem('gm_code', data.code);
-            
+
+            // UI Updates
             showScreen('screen-lobby');
             document.getElementById('lobbyCode').innerText = data.code;
-            
+            document.getElementById('headerCode').innerText = data.code;
+            document.getElementById('chatArea').classList.remove('hidden');
+
             if(data.is_host) {
                 document.getElementById('startBtn').classList.remove('hidden');
                 document.getElementById('resetBtn').classList.remove('hidden');
                 document.getElementById('aiBtn').classList.remove('hidden');
-                document.getElementById('waitText').classList.add('hidden');
             }
-
-            // لو دخلنا واللعبة شغالة (إعادة اتصال)
-            if(data.state === 'playing') {
-                showScreen('screen-game');
-            }
+            if(data.state === 'playing') showScreen('screen-game');
         });
 
         socket.on('error_msg', data => Swal.fire('خطأ', data.msg, 'error'));
 
         socket.on('update_players', data => {
-            const list = document.getElementById('playersList');
-            list.innerHTML = data.players.map(p => `
-                <div class="bg-slate-700 px-3 py-1 rounded-lg text-sm flex items-center gap-2 border border-slate-600">
-                    <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div> ${p.name}
+            document.getElementById('playersList').innerHTML = data.players.map(p => `
+                <div class="bg-slate-700 px-3 py-1 rounded-full text-sm border border-slate-500 shadow-sm flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-green-400"></div> ${p.name}
                 </div>
             `).join('');
         });
 
+        // --- Game Logic ---
         function startGame() { socket.emit('start_game', {code: myData.code}); }
 
         socket.on('game_started', data => {
             showScreen('screen-game');
             const content = document.getElementById('roleContent');
             const locGrid = document.getElementById('locGrid');
-            
+
             if(data.role === 'gecko') {
-                content.innerHTML = `<h2 class="text-3xl font-black text-red-500 mb-2">أنت البرص 🦎</h2><p class="text-sm text-gray-300">اسمع وحاول تفهم!</p>`;
+                content.innerHTML = `<h2 class="text-3xl font-black text-red-500 mb-2">أنت البرص 🦎</h2><p class="text-sm text-gray-300">مهمتك: اعرف المكان من غير ما تتقفش!</p>`;
             } else {
-                content.innerHTML = `<h2 class="text-3xl font-black text-blue-400 mb-2">مواطن 👮</h2><h3 class="text-2xl font-bold bg-slate-800 px-4 py-2 rounded-lg border border-blue-500">${data.location}</h3>`;
+                content.innerHTML = `<h2 class="text-3xl font-black text-blue-400 mb-2">مواطن 👮</h2><div class="bg-slate-800 p-2 rounded border border-blue-500 text-xl font-bold mt-2">${data.location}</div>`;
             }
 
-            locGrid.innerHTML = data.all_locations.map(l => `<div class="bg-slate-800 p-3 rounded-lg text-center border border-slate-700">${l}</div>`).join('');
+            locGrid.innerHTML = data.all_locations.map(l => `<div class="bg-slate-800 p-2 rounded text-center border border-slate-700">${l}</div>`).join('');
             
-            if(data.reconnect) {
-                Swal.fire('أهلاً بعودتك', 'تم استعادة دورك بنجاح', 'success');
-            }
+            if(data.reconnect) Swal.fire('عودة حميدة', 'تم استعادة دورك', 'success');
         });
 
         socket.on('start_timer', data => {
@@ -212,52 +230,112 @@
             const txt = document.getElementById('timerText');
             const int = setInterval(() => {
                 t--;
-                let m = Math.floor(t/60), s = t%60;
-                txt.innerText = `${m}:${s<10?'0'+s:s}`;
+                txt.innerText = `${Math.floor(t/60)}:${(t%60).toString().padStart(2,'0')}`;
                 bar.style.width = (t/data.duration*100) + "%";
                 if(t<=0) clearInterval(int);
             }, 1000);
         });
 
+        // --- Chat System ---
+        function sendChat() {
+            const input = document.getElementById('chatInput');
+            const msg = input.value.trim();
+            if(!msg) return;
+            
+            socket.emit('send_message', {code: myData.code, userId: myData.userId, msg: msg});
+            input.value = "";
+        }
+
+        function handleEnter(e) { if(e.key === 'Enter') sendChat(); }
+
+        socket.on('new_message', data => {
+            const box = document.getElementById('chatMessages');
+            const isMe = data.uid === myData.userId;
+            
+            let html = '';
+            if(data.type === 'system') {
+                html = `<div class="text-center text-xs text-yellow-500 my-1 bg-yellow-900/20 py-1 rounded chat-msg">🔔 ${data.msg}</div>`;
+            } else if (data.type === 'ai') {
+                html = `<div class="text-center text-xs text-purple-400 my-1 bg-purple-900/20 py-1 rounded chat-msg">🤖 ${data.msg}</div>`;
+            } else {
+                html = `
+                    <div class="flex flex-col ${isMe ? 'items-start' : 'items-end'} chat-msg">
+                        <span class="text-[10px] text-gray-400 px-1">${data.sender}</span>
+                        <div class="${isMe ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-200'} px-3 py-1.5 rounded-lg max-w-[85%] text-sm shadow">
+                            ${data.msg}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            box.insertAdjacentHTML('beforeend', html);
+            box.scrollTop = box.scrollHeight;
+            
+            if(!isMe) playSound('msg');
+        });
+
+        socket.on('chat_history', data => {
+            const box = document.getElementById('chatMessages');
+            box.innerHTML = ""; // تنظيف
+            data.history.forEach(msg => {
+                // نعيد محاكاة استقبال الرسالة عشان تترسم بنفس الشكل
+                // ملاحظة: هنا بنعتبر الـ uid هو المعيار لمعرفة هل الرسالة مني ولا لا
+                // بس بما إن الهيستوري بيحمل البيانات الخام، هنحتاج نمررها للرسم
+                // للتبسيط، هنعرضها كأنها رسائل عادية
+                socket.emit('dummy_render'); // (مش مستخدمة، مجرد كومنت)
+                // الأفضل نعيد استخدام منطق الرسم:
+                const isMe = msg.uid === myData.userId;
+                let html = '';
+                if(msg.type === 'system') html = `<div class="text-center text-xs text-yellow-500 my-1 bg-yellow-900/20 py-1 rounded">🔔 ${msg.msg}</div>`;
+                else if (msg.type === 'ai') html = `<div class="text-center text-xs text-purple-400 my-1 bg-purple-900/20 py-1 rounded">🤖 ${msg.msg}</div>`;
+                else html = `
+                    <div class="flex flex-col ${isMe ? 'items-start' : 'items-end'}">
+                        <span class="text-[10px] text-gray-400 px-1">${msg.sender}</span>
+                        <div class="${isMe ? 'bg-blue-600' : 'bg-slate-700'} px-3 py-1.5 rounded-lg max-w-[85%] text-sm shadow text-white">
+                            ${msg.msg}
+                        </div>
+                    </div>`;
+                box.insertAdjacentHTML('beforeend', html);
+            });
+            box.scrollTop = box.scrollHeight;
+        });
+
         // --- AI & Punishment ---
         function triggerAI() { socket.emit('trigger_ai', {code: myData.code}); }
-
+        
         socket.on('ai_message', data => {
             const bubble = document.getElementById('aiBubble');
             document.getElementById('aiText').innerText = data.msg;
             bubble.classList.remove('hidden');
-            // إخفاء الرسالة بعد 10 ثواني
-            setTimeout(() => bubble.classList.add('hidden'), 10000);
-            
-            // تشغيل صوت
-            new Audio('https://assets.mixkit.co/sfx/preview/mixkit-sci-fi-click-900.mp3').play().catch(e=>{});
+            playSound('ai');
+            setTimeout(() => bubble.classList.add('hidden'), 8000);
         });
 
         function reqPunish() { socket.emit('request_punishment', {code: myData.code}); }
-
+        
         socket.on('show_punishment', data => {
-            Swal.fire({
-                title: '🔥 عقاب',
-                text: data.text,
-                imageUrl: `/assets/${data.image}`,
-                imageWidth: 300,
-                imageHeight: 300,
-                background: '#1e293b',
-                color: '#fff'
-            });
+            Swal.fire({ title: '🔥 عقاب', text: data.text, imageUrl: `/assets/${data.image}`, imageWidth: 250, background: '#1e293b', color: '#fff' });
         });
 
-        function resetGame() {
-            if(confirm('إنهاء اللعبة للجميع؟')) socket.emit('reset_game', {code: myData.code});
-        }
-        
+        function resetGame() { if(confirm('إنهاء اللعبة؟')) socket.emit('reset_game', {code: myData.code}); }
         socket.on('return_to_lobby', () => location.reload());
 
+        // --- Helpers ---
         function showScreen(id) {
             ['screen-login', 'screen-lobby', 'screen-game'].forEach(s => document.getElementById(s).classList.add('hidden'));
             document.getElementById(id).classList.remove('hidden');
         }
-        function toggleLocs() { document.getElementById('locModal').classList.toggle('hidden'); }
+        function playSound(type) {
+            let url = type === 'ai' ? 'https://assets.mixkit.co/sfx/preview/mixkit-sci-fi-click-900.mp3' : 'https://assets.mixkit.co/sfx/preview/mixkit-message-pop-alert-2354.mp3';
+            new Audio(url).play().catch(()=>{});
+        }
+        function toggleChatHeight() {
+            const chat = document.getElementById('chatArea');
+            chat.style.height = chat.style.height === '40vh' ? '40px' : '40vh';
+        }
+    </script>
+</body>
+</html>
     </script>
 </body>
 </html>
