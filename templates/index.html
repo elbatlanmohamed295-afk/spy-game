@@ -2,317 +2,368 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>لعبة البرص 🦎 PRO</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>أين البرص؟ - Game Night</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
         :root {
-            --gold: #ffb700; --dark: #0f0f13; --card: #1c1c24; 
-            --spy: #ff4757; --human: #2ecc71; --blue: #3742fa;
+            --primary: #6c5ce7;
+            --secondary: #00cec9;
+            --bg: #2d3436;
+            --card-bg: #dfe6e9;
+            --dark-card: #1e272e;
         }
-        * { box-sizing: border-box; transition: all 0.3s ease; }
-        body { 
-            font-family: 'Cairo', sans-serif; background: var(--dark); color: #fff; 
-            margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; 
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: white;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
             overflow-x: hidden;
         }
-        .container { 
-            width: 100%; max-width: 480px; background: var(--card); padding: 25px; 
-            border-radius: 30px; border: 1px solid #333; box-shadow: 0 20px 50px rgba(0,0,0,0.5); 
-            position: relative; overflow: hidden;
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* --- UI Elements --- */
+        .card {
+            background: var(--dark-card);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            border: 1px solid #444;
+        }
+
+        input {
+            width: 80%;
+            padding: 15px;
+            border-radius: 10px;
+            border: none;
+            background: #444;
+            color: white;
+            margin: 10px 0;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            border-radius: 10px;
+            border: none;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: transform 0.2s;
         }
         
-        /* Typography */
-        h1, h2, h3 { text-align: center; margin: 0 0 15px 0; }
-        h1 { color: var(--gold); text-shadow: 0 0 10px rgba(255, 183, 0, 0.3); font-size: 2rem; }
-        
-        /* Inputs & Buttons */
-        .input-group { margin-bottom: 15px; }
-        input, select { 
-            width: 100%; padding: 15px; background: #2c2c35; border: 2px solid #333; 
-            border-radius: 12px; color: #fff; font-family: 'Cairo'; font-size: 1.1rem; outline: none;
-        }
-        input:focus { border-color: var(--gold); }
-        
-        button { 
-            width: 100%; padding: 15px; border: none; border-radius: 12px; 
-            font-weight: 900; font-size: 1.2rem; cursor: pointer; transform: scale(1);
-        }
         button:active { transform: scale(0.95); }
-        .btn-main { background: var(--gold); color: #000; box-shadow: 0 5px 15px rgba(255, 183, 0, 0.2); }
-        .btn-vote { background: var(--spy); color: #fff; margin-top: 10px; }
-        .btn-secondary { background: #333; color: #ccc; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: #00b894; color: white; }
+        .btn-danger { background: #ff7675; color: white; }
 
-        /* Avatars Grid */
-        .avatar-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
-        .avatar-option { 
-            width: 100%; aspect-ratio: 1; border-radius: 50%; cursor: pointer; 
-            border: 2px solid transparent; opacity: 0.6;
+        .hidden { display: none !important; }
+
+        /* --- Player List --- */
+        .player-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+            margin-top: 20px;
         }
-        .avatar-option:hover, .avatar-option.selected { opacity: 1; border-color: var(--gold); transform: scale(1.1); }
-
-        /* Screens Logic */
-        .screen { display: none; animation: fadeIn 0.5s; }
-        .screen.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-        /* Player List */
-        .player-item { 
-            display: flex; align-items: center; background: #252530; padding: 10px; 
-            border-radius: 15px; margin-bottom: 8px; border: 1px solid #333;
+        .player-item {
+            background: #636e72;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 14px;
         }
-        .player-img { width: 45px; height: 45px; border-radius: 50%; margin-left: 10px; object-fit: cover; }
-        .player-name { flex-grow: 1; font-weight: bold; }
-        .badge { font-size: 0.8rem; padding: 2px 8px; border-radius: 5px; background: #333; }
 
-        /* Game Card */
-        .game-card { 
-            background: linear-gradient(135deg, #fff, #ddd); color: #000; padding: 30px; 
-            border-radius: 20px; text-align: center; margin: 20px 0; 
-            box-shadow: 0 10px 30px rgba(255,255,255,0.1);
+        /* --- The Flip Card (Role Reveal) --- */
+        .scene {
+            width: 100%;
+            height: 250px;
+            perspective: 600px;
+            margin: 20px 0;
+            cursor: pointer;
         }
-        .role-title { font-size: 1.5rem; font-weight: 900; margin-bottom: 10px; }
-        .location-text { font-size: 2.5rem; color: var(--blue); font-weight: 900; }
-        .spy-text { font-size: 2.5rem; color: var(--spy); }
+        .card-object {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transition: transform 1s;
+            transform-style: preserve-3d;
+        }
+        .card-object.is-flipped { transform: rotateY(180deg); }
+        .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            border-radius: 15px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .card-face-front { background: var(--secondary); color: #2d3436; }
+        .card-face-back { background: var(--primary); color: white; transform: rotateY(180deg); }
 
-        /* Timer */
-        .timer-box { font-size: 2rem; text-align: center; color: var(--gold); font-weight: bold; margin: 20px 0; }
+        /* --- Voting System --- */
+        .vote-btn {
+            background: #ff7675;
+            margin-top: 5px;
+            font-size: 12px;
+            padding: 5px;
+        }
+        .selected { border: 3px solid yellow; }
 
-        /* Results */
-        .result-box { text-align: center; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 15px; }
-        .punishment { color: var(--spy); font-size: 1.3rem; margin-top: 15px; font-weight: bold; }
+        /* --- Timer --- */
+        #timerBar {
+            width: 100%;
+            height: 10px;
+            background: #444;
+            border-radius: 5px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        #timerFill {
+            height: 100%;
+            background: var(--secondary);
+            width: 100%;
+            transition: width 1s linear;
+        }
+
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div id="login-screen" class="screen active">
-        <h1>لعبة البرص 🦎</h1>
-        <div class="input-group">
-            <input type="text" id="username" placeholder="اكتب اسمك يا فنان...">
-        </div>
-        <div class="input-group">
-            <input type="text" id="roomCode" placeholder="اسم الغرفة (مثلاً: شبرا)">
-        </div>
-        <p style="text-align: center; color: #888;">اختر صورتك:</p>
-        <div class="avatar-grid" id="avatarList">
-            </div>
-        <button class="btn-main" onclick="joinGame()">دخول اللعبة 🚀</button>
+    <img src="{{ url_for('static', filename='logo.png') }}" style="width: 80px; margin-bottom: 10px;">
+    
+    <div id="screen-login" class="card">
+        <h2>تسجيل الدخول</h2>
+        <input type="text" id="username" placeholder="اسمك إيه؟">
+        <button class="btn-primary" onclick="createRoom()">إنشاء غرفة جديدة</button>
+        <div style="margin:15px; color:#aaa">- أو -</div>
+        <input type="text" id="roomCodeInput" placeholder="كود الغرفة">
+        <button class="btn-success" onclick="joinRoom()">دخول غرفة</button>
     </div>
 
-    <div id="lobby-screen" class="screen">
-        <h2>غرفة: <span id="lobby-room-name" style="color: var(--gold)"></span></h2>
-        <div id="players-list"></div>
+    <div id="screen-lobby" class="card hidden">
+        <h3>غرفة: <span id="lobbyCode" style="color:var(--secondary)"></span></h3>
+        <p>في انتظار اللاعبين...</p>
+        <div id="playerList" class="player-grid"></div>
         <br>
-        <div id="host-controls" style="display:none;">
-            <select id="category-select">
-                <option value="أماكن 🌍">أماكن 🌍</option>
-                <option value="أكلات 🥘">أكلات 🥘</option>
-                <option value="أفلام ومسلسلات 🎬">أفلام ومسلسلات 🎬</option>
-                <option value="أشياء في البيت 🏠">أشياء في البيت 🏠</option>
-            </select>
-            <button class="btn-main" onclick="startGame()">ابداً اللعب 🎮</button>
-        </div>
-        <p id="waiting-msg" style="text-align: center; color: #777;">في انتظار "الأدمن" يبدأ...</p>
+        <button id="startBtn" class="btn-success hidden" onclick="startGame()">ابدأ اللعبة 🎮</button>
     </div>
 
-    <div id="game-screen" class="screen">
-        <div class="timer-box" id="timer">05:00</div>
+    <div id="screen-game" class="hidden">
         
-        <div class="game-card" id="card-content">
+        <div class="scene" onclick="this.querySelector('.card-object').classList.toggle('is-flipped')">
+            <div class="card-object">
+                <div class="card-face card-face-front">
+                    اضغط لتعرف دورك 🕵️‍♂️
+                    <small style="font-size:12px; margin-top:10px">(سرية تامة)</small>
+                </div>
+                <div class="card-face card-face-back">
+                    <div id="roleContent">Loading...</div>
+                </div>
             </div>
-
-        <p style="text-align: center; font-size: 0.9rem; color: #aaa;">اسألوا بعض وحاولوا تكشفوا البرص!</p>
-        <button class="btn-vote" onclick="showVoting()">يلا نصوت ✋</button>
-    </div>
-
-    <div id="vote-screen" class="screen">
-        <h2>مين البرص؟ 🧐</h2>
-        <div id="vote-list"></div>
-        <p id="vote-status" style="text-align: center; color: var(--gold)"></p>
-    </div>
-
-    <div id="result-screen" class="screen">
-        <h1 id="win-status"></h1>
-        <div class="result-box">
-            <p>البرص كان: <strong id="real-spy" style="color: var(--spy); font-size: 1.5rem;"></strong></p>
-            <p>المكان كان: <strong id="real-location" style="color: var(--blue);"></strong></p>
-            <hr style="border-color: #444;">
-            <p class="punishment" id="punishment-text"></p>
         </div>
-        <br>
-        <button class="btn-main" onclick="location.reload()">لعبة جديدة 🔄</button>
+
+        <div id="timerBar"><div id="timerFill"></div></div>
+        <h2 id="timerText">05:00</h2>
+
+        <div class="card">
+            <h3>🗳️ مين هو البرص؟</h3>
+            <p style="font-size:12px; color:#aaa">اضغط على اسم الشخص للتصويت ضده</p>
+            <div id="votingGrid" class="player-grid"></div>
+            <button class="btn-danger" id="submitVoteBtn" onclick="submitVote()" disabled>تأكيد التصويت</button>
+        </div>
     </div>
+
+    <div id="screen-result" class="card hidden">
+        <h1 id="winnerTitle"></h1>
+        <p id="resultMsg" style="font-size:18px; margin: 20px 0;"></p>
+        
+        <div style="background:#333; padding:10px; border-radius:10px;">
+            <h4>نتيجة التصويت:</h4>
+            <ul id="votesSummary" style="list-style:none; padding:0; text-align:right;"></ul>
+        </div>
+
+        <button class="btn-danger" onclick="requestPunishment()">عجلة العقاب 😈</button>
+        <div id="punishmentDisplay" class="hidden">
+            <h3 id="pText" style="color:#ff7675"></h3>
+            <img id="pImg" src="" style="width:100%; border-radius:10px;">
+        </div>
+        
+        <button class="btn-primary" onclick="resetGame()">لعبة جديدة 🔄</button>
+    </div>
+
 </div>
 
 <script>
     const socket = io();
-    let mySid = '';
-    let currentRoom = '';
-    let selectedAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140048.png'; // Default
-    let timerInterval;
+    let myName = "";
+    let myRoom = "";
+    let selectedSuspect = null;
 
-    // --- Setup UI ---
-    const avatars = [
-        "https://cdn-icons-png.flaticon.com/512/4140/4140048.png",
-        "https://cdn-icons-png.flaticon.com/512/4140/4140047.png",
-        "https://cdn-icons-png.flaticon.com/512/4140/4140037.png",
-        "https://cdn-icons-png.flaticon.com/512/4140/4140051.png",
-        "https://cdn-icons-png.flaticon.com/512/1999/1999625.png",
-        "https://cdn-icons-png.flaticon.com/512/4140/4140061.png",
-        "https://cdn-icons-png.flaticon.com/512/4140/4140077.png",
-        "https://cdn-icons-png.flaticon.com/512/924/924874.png"
-    ];
-    
-    const avatarContainer = document.getElementById('avatarList');
-    avatars.forEach(url => {
-        const img = document.createElement('img');
-        img.src = url;
-        img.className = 'avatar-option';
-        img.onclick = () => {
-            document.querySelectorAll('.avatar-option').forEach(el => el.classList.remove('selected'));
-            img.classList.add('selected');
-            selectedAvatar = url;
-        };
-        avatarContainer.appendChild(img);
+    // --- Navigation ---
+    function showScreen(id) {
+        document.querySelectorAll('.container > div').forEach(d => d.classList.add('hidden'));
+        document.getElementById(id).classList.remove('hidden');
+    }
+
+    // --- Socket Events ---
+    socket.on('error', data => alert(data.msg));
+
+    function createRoom() {
+        myName = document.getElementById('username').value.trim();
+        if(!myName) return alert("اكتب اسمك!");
+        socket.emit('create_room', {name: myName});
+    }
+
+    socket.on('room_created', data => {
+        myRoom = data.code;
+        enterLobby(data.code, true);
     });
 
-    // --- Functions ---
-    function switchScreen(id) {
-        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-        document.getElementById(id).classList.add('active');
+    function joinRoom() {
+        myName = document.getElementById('username').value.trim();
+        let code = document.getElementById('roomCodeInput').value.trim();
+        if(!myName || !code) return alert("بيانات ناقصة");
+        socket.emit('join_room', {name: myName, code: code});
     }
 
-    function joinGame() {
-        const username = document.getElementById('username').value;
-        currentRoom = document.getElementById('roomCode').value;
-        if(!username || !currentRoom) return alert("دخل بياناتك الأول يا نجم!");
-        
-        socket.emit('join', { username, room: currentRoom, userImg: selectedAvatar });
-        document.getElementById('lobby-room-name').innerText = currentRoom;
-        switchScreen('lobby-screen');
+    socket.on('join_success', data => {
+        myRoom = data.code;
+        enterLobby(data.code, data.is_host);
+    });
+
+    function enterLobby(code, isHost) {
+        showScreen('screen-lobby');
+        document.getElementById('lobbyCode').innerText = code;
+        if(isHost) document.getElementById('startBtn').classList.remove('hidden');
     }
 
+    socket.on('update_players', data => {
+        const div = document.getElementById('playerList');
+        div.innerHTML = data.players.map(p => `<div class="player-item">👤 ${p}</div>`).join('');
+    });
+
+    // --- Game Logic ---
     function startGame() {
-        const category = document.getElementById('category-select').value;
-        socket.emit('start_game', { room: currentRoom, category: category });
+        socket.emit('start_game', {code: myRoom});
     }
 
-    function showVoting() {
-        switchScreen('vote-screen');
-    }
-
-    function castVote(targetSid) {
-        socket.emit('vote_player', { room: currentRoom, targetSid: targetSid });
-        // Disable buttons visual feedback
-        document.getElementById('vote-list').innerHTML = '<h3 style="text-align:center">تم التصويت... في انتظار الباقي</h3>';
-    }
-
-    // --- Socket Listeners ---
-    socket.on('update_player_list', (data) => {
-        const list = document.getElementById('players-list');
-        const voteList = document.getElementById('vote-list');
-        list.innerHTML = '';
-        voteList.innerHTML = '';
-        
-        let amIHost = false;
-
-        data.players.forEach(p => {
-            if (p.sid === socket.id && p.isHost) amIHost = true;
-            
-            // قائمة الانتظار
-            list.innerHTML += `
-                <div class="player-item">
-                    <img src="${p.img}" class="player-img">
-                    <span class="player-name">${p.name}</span>
-                    ${p.isHost ? '<span class="badge" style="color:#ffd700">Admin 👑</span>' : ''}
-                </div>`;
-
-            // قائمة التصويت (لا أصوت لنفسي)
-            if (p.sid !== socket.id) {
-                voteList.innerHTML += `
-                    <div class="player-item" onclick="castVote('${p.sid}')" style="cursor:pointer; border:1px solid #444;">
-                        <img src="${p.img}" class="player-img">
-                        <span class="player-name">صوّت ضد: ${p.name}</span>
-                    </div>`;
-            }
-        });
-
-        if(amIHost) {
-            document.getElementById('host-controls').style.display = 'block';
-            document.getElementById('waiting-msg').style.display = 'none';
+    socket.on('game_started', data => {
+        showScreen('screen-game');
+        // إعداد الكارت
+        const content = document.getElementById('roleContent');
+        if(data.role === 'gecko') {
+            content.innerHTML = `<h1 style="color:#ff7675">أنت البرص 🦎</h1><p>اسمعهم وحاول تعرف المكان</p>`;
+        } else {
+            content.innerHTML = `<h1 style="color:#55efc4">أنت مواطن 👮</h1><h3>${data.info}</h3><p>الفئة: ${data.category}</p>`;
         }
     });
 
-    socket.on('game_started', (data) => {
-        switchScreen('game-screen');
-        const card = document.getElementById('card-content');
-        
-        if (data.role === 'spy') {
-            card.innerHTML = `
-                <div class="role-title">أنت البرص 🦎</div>
-                <div class="spy-text">أخفي نفسك!</div>
-                <p>حاول تعرف هما بيتكلموا عن ايه..</p>
-                <div style="background:#000; color:#fff; padding:5px; border-radius:5px; margin-top:10px;">القسم: ${data.category}</div>
-            `;
-        } else {
-            card.innerHTML = `
-                <div class="role-title">أنت بني آدم 🧔</div>
-                <div class="location-text">${data.location}</div>
-                <p>ماتفضحش المكان، بس اكشف البرص!</p>
-            `;
-        }
+    socket.on('update_players', data => {
+        // تحديث قائمة التصويت أثناء اللعب
+        const grid = document.getElementById('votingGrid');
+        grid.innerHTML = "";
+        data.players.forEach(p => {
+            if(p === myName) return; // لا تصوت لنفسك
+            let btn = document.createElement('div');
+            btn.className = 'player-item';
+            btn.style.cursor = 'pointer';
+            btn.innerText = p;
+            btn.onclick = () => selectSuspect(p, btn);
+            grid.appendChild(btn);
+        });
+    });
 
-        // Timer Logic
-        clearInterval(timerInterval);
-        const end = data.endTime * 1000;
-        timerInterval = setInterval(() => {
-            const now = Date.now();
-            const diff = end - now;
-            if (diff <= 0) {
-                clearInterval(timerInterval);
-                document.getElementById('timer').innerText = "00:00";
-                showVoting(); // Auto move to vote
-            } else {
-                const m = Math.floor(diff / 60000);
-                const s = Math.floor((diff % 60000) / 1000);
-                document.getElementById('timer').innerText = `${m}:${s < 10 ? '0'+s : s}`;
+    // --- Voting ---
+    function selectSuspect(name, element) {
+        selectedSuspect = name;
+        document.querySelectorAll('#votingGrid .player-item').forEach(el => el.style.border = 'none');
+        element.style.border = '2px solid #ff7675';
+        document.getElementById('submitVoteBtn').disabled = false;
+    }
+
+    function submitVote() {
+        document.getElementById('submitVoteBtn').innerText = "تم التصويت ✅";
+        document.getElementById('submitVoteBtn').disabled = true;
+        document.getElementById('votingGrid').classList.add('hidden'); // اخفاء القائمة
+        socket.emit('submit_vote', {code: myRoom, voter: myName, suspect: selectedSuspect});
+    }
+
+    socket.on('vote_update', data => {
+        // ممكن نظهر هنا مين صوت (اختياري)
+    });
+
+    // --- Timer ---
+    socket.on('start_timer', data => {
+        let timeLeft = data.seconds;
+        const fill = document.getElementById('timerFill');
+        const text = document.getElementById('timerText');
+        
+        const totalTime = timeLeft;
+        
+        const interval = setInterval(() => {
+            timeLeft--;
+            let min = Math.floor(timeLeft / 60);
+            let sec = timeLeft % 60;
+            text.innerText = `${min}:${sec < 10 ? '0'+sec : sec}`;
+            
+            let percent = (timeLeft / totalTime) * 100;
+            fill.style.width = percent + "%";
+            
+            if(timeLeft <= 0) {
+                clearInterval(interval);
+                // ممكن نضيف منطق لإنهاء الوقت هنا
             }
         }, 1000);
     });
 
-    socket.on('error_msg', (data) => alert(data.msg));
-
-    socket.on('vote_update', (data) => {
-        document.getElementById('vote-status').innerText = `تم التصويت: ${data.votes} من ${data.total}`;
-        // لو الكل صوت، السيرفر ممكن يبعت النتيجة تلقائي أو الأدمن ينهي، 
-        // هنا هنعمل زرار للأدمن أو أي حد يطلب النتيجة
-        if(data.votes === data.total) {
-            socket.emit('reveal_result', { room: currentRoom });
+    // --- Results ---
+    socket.on('game_over', data => {
+        showScreen('screen-result');
+        document.getElementById('winnerTitle').innerText = data.winner === 'Humans' ? "البشر كسبوا! 🎉" : "البرص كسب! 🦎";
+        document.getElementById('winnerTitle').style.color = data.winner === 'Humans' ? "#00b894" : "#ff7675";
+        document.getElementById('resultMsg').innerText = data.msg;
+        
+        let summaryHtml = "";
+        for(let [name, count] of Object.entries(data.votes_summary)) {
+            summaryHtml += `<li>${name}: ${count} أصوات</li>`;
         }
+        document.getElementById('votesSummary').innerHTML = summaryHtml;
     });
 
-    socket.on('game_over', (data) => {
-        switchScreen('result-screen');
-        const winTitle = document.getElementById('win-status');
-        
-        if (data.spyCaught) {
-            winTitle.innerHTML = "البشر كسبوا! 🎉";
-            winTitle.style.color = "var(--human)";
-        } else {
-            winTitle.innerHTML = "البرص هرب! 🦎";
-            winTitle.style.color = "var(--spy)";
-        }
+    // --- Punishment ---
+    function requestPunishment() {
+        socket.emit('request_punishment', {code: myRoom});
+    }
 
-        document.getElementById('real-spy').innerText = data.spyName;
-        document.getElementById('real-location').innerText = data.location;
-        
-        if(data.spyCaught) {
-            document.getElementById('punishment-text').innerHTML = `العقاب لـ ${data.spyName}:<br>${data.punishment}`;
-        } else {
-            document.getElementById('punishment-text').innerHTML = `الضحية البريئة كان: ${data.victimName} 😢`;
-        }
+    socket.on('show_punishment', data => {
+        document.getElementById('punishmentDisplay').classList.remove('hidden');
+        document.getElementById('pText').innerText = data.text;
+        document.getElementById('pImg').src = "/static/" + data.img;
+    });
+
+    function resetGame() {
+        socket.emit('reset_game', {code: myRoom});
+    }
+
+    socket.on('reset_to_lobby', () => {
+        location.reload();
     });
 
 </script>
