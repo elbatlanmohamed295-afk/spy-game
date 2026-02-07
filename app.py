@@ -3,15 +3,14 @@ from flask_socketio import SocketIO, join_room, emit
 import random
 import string
 import uuid
-from datetime import datetime
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'ultimate_pro_secret_key'
+app.config['SECRET_KEY'] = 'final_ultimate_secret_key'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# --- قاعدة البيانات ---
+# --- بيانات اللعبة ---
 GAME_DATA = {
-    "أماكن عامة": ["المطار", "المستشفى", "الجامعة", "المترو", "المول", "الفندق"],
+    "أماكن عامة": ["المطار", "المستشفى", "الجامعة", "محطة المترو", "المول", "الفندق"],
     "أماكن ترفيه": ["السينما", "الملاهي", "القهوة", "الجيم", "الشاطئ", "السيرك"],
     "أماكن عمل": ["البنك", "الشركة", "موقع بناء", "قسم الشرطة", "المطعم", "استوديو"]
 }
@@ -26,16 +25,10 @@ AI_PROMPTS = [
     "يا {p1}، شك في حد واسأله سؤال مباشر!"
 ]
 
-# --- تخزين الغرف ---
-# rooms[code] = { 
-#   'host': uid, 
-#   'players': {uid: {name, sid, role}}, 
-#   'state': 'lobby',
-#   'chat_history': []  <-- الجديد: حفظ الشات
-# }
+# الهيكل: rooms[code] = { 'host': uid, 'players': {}, 'votes': {}, 'state': '...', 'chat_history': [] }
 rooms = {}
 
-# مسار الصور (يقرأ من المجلد الرئيسي مباشرة)
+# قراءة الصور من نفس المجلد
 @app.route('/assets/<path:filename>')
 def custom_static(filename):
     return send_from_directory('.', filename)
@@ -52,21 +45,24 @@ def index():
 @socketio.on('join_game')
 def on_join(data):
     user_id = data.get('userId') or str(uuid.uuid4())
-    code = data.get('code', '').upper()
+    raw_code = data.get('code')
+    code = raw_code.upper() if raw_code else ''
     name = data.get('name')
     create_new = data.get('create', False)
 
-    # 1. إنشاء غرفة
+    # 1. إنشاء الغرفة
     if create_new:
         code = generate_code()
+        while code in rooms: code = generate_code()
         rooms[code] = {
             'host': user_id,
             'players': {},
+            'votes': {},
             'state': 'lobby',
             'game_info': {},
-            'chat_history': [] # تهيئة سجل الشات
+            'chat_history': []
         }
-    
+
     # 2. التحقق
     if code not in rooms:
         emit('error_msg', {'msg': 'الغرفة غير موجودة!'})
@@ -74,7 +70,7 @@ def on_join(data):
 
     room = rooms[code]
     
-    # 3. إدارة اللاعبين (دخول جديد أو إعادة اتصال)
+    # 3. تسجيل/تحديث اللاعب
     if user_id in room['players']:
         room['players'][user_id]['sid'] = request.sid
         if name: room['players'][user_id]['name'] = name
@@ -89,7 +85,6 @@ def on_join(data):
 
     join_room(code)
     
-    # إرسال بيانات النجاح
     emit('join_success', {
         'code': code, 
         'userId': user_id, 
@@ -97,23 +92,22 @@ def on_join(data):
         'state': room['state']
     })
 
-    # إرسال سجل الشات القديم للاعب الجديد
     emit('chat_history', {'history': room['chat_history']})
-
-    # تحديث الواجهة واستعادة الحالة لو اللعبة شغالة
     update_ui(code)
+    
+    # استعادة الحالة عند الريفريش
     if room['state'] == 'playing' and room['players'][user_id]['role']:
         restore_game_state(user_id, room)
 
 def restore_game_state(uid, room):
-    role = room['players'][uid]['role']
+    p = room['players'][uid]
     loc = room['game_info']['location']
     emit('game_started', {
-        'role': role,
-        'location': loc if role == 'human' else "???",
+        'role': p['role'],
+        'location': loc if p['role'] == 'human' else "???",
         'all_locations': ALL_LOCATIONS,
         'reconnect': True
-    }, room=room['players'][uid]['sid'])
+    }, room=p['sid'])
 
 @socketio.on('start_game')
 def on_start(data):
@@ -126,76 +120,105 @@ def on_start(data):
         emit('error_msg', {'msg': 'مطلوب 3 لاعبين على الأقل!'})
         return
 
-    # إعداد اللعبة
     cat = random.choice(list(GAME_DATA.keys()))
     loc = random.choice(GAME_DATA[cat])
     gecko_uid = random.choice(uids)
     
     room['state'] = 'playing'
+    room['votes'] = {} # تصفير التصويت
     room['game_info'] = {'location': loc, 'gecko': gecko_uid}
 
-    # إضافة رسالة نظام في الشات
-    sys_msg = {'sender': 'System', 'msg': 'بدأت اللعبة! حاولوا كشف البرص 🦎', 'type': 'system'}
+    sys_msg = {'sender': 'System', 'msg': 'بدأت اللعبة! 🎮', 'type': 'system'}
     room['chat_history'].append(sys_msg)
     emit('new_message', sys_msg, room=code)
 
     for uid in uids:
         role = 'gecko' if uid == gecko_uid else 'human'
         room['players'][uid]['role'] = role
-        sid = room['players'][uid]['sid']
         emit('game_started', {
             'role': role,
             'location': loc if role == 'human' else "???",
             'all_locations': ALL_LOCATIONS
-        }, room=sid)
+        }, room=room['players'][uid]['sid'])
 
     emit('start_timer', {'duration': 300}, room=code)
 
-# --- نظام الشات الجديد ---
-@socketio.on('send_message')
-def on_chat(data):
+# --- نظام التصويت (المعاد إضافته) ---
+@socketio.on('submit_vote')
+def on_vote(data):
     code = data['code']
-    msg = data['msg']
-    uid = data['userId']
+    voter_id = data['userId']
+    suspect_id = data['suspectId']
     room = rooms.get(code)
     
-    if room and uid in room['players']:
-        sender_name = room['players'][uid]['name']
-        message_data = {
-            'sender': sender_name,
-            'msg': msg,
-            'type': 'player',
-            'uid': uid
-        }
-        # حفظ الرسالة
-        room['chat_history'].append(message_data)
-        # إرسال للجميع
-        emit('new_message', message_data, room=code)
+    if room and room['state'] == 'playing':
+        room['votes'][voter_id] = suspect_id
+        
+        # إشعار بالشات
+        voter_name = room['players'][voter_id]['name']
+        suspect_name = room['players'][suspect_id]['name']
+        msg = {'sender': 'System', 'msg': f"🗳️ {voter_name} صوت ضد {suspect_name}", 'type': 'system'}
+        room['chat_history'].append(msg)
+        emit('new_message', msg, room=code)
+        
+        # التحقق هل الجميع صوت؟
+        if len(room['votes']) == len(room['players']):
+            calculate_results(code)
 
-# --- الذكاء الاصطناعي ---
+def calculate_results(code):
+    room = rooms[code]
+    votes = list(room['votes'].values())
+    gecko_uid = room['game_info']['gecko']
+    
+    # أكثر شخص حصل على أصوات
+    most_voted = max(set(votes), key=votes.count)
+    gecko_name = room['players'][gecko_uid]['name']
+    suspect_name = room['players'][most_voted]['name']
+    
+    winner = "Humans" if most_voted == gecko_uid else "Gecko"
+    
+    emit('game_over', {
+        'winner': winner,
+        'gecko_name': gecko_name,
+        'suspect_name': suspect_name
+    }, room=code)
+    
+    room['state'] = 'result'
+
+# --- الشات والذكاء الاصطناعي ---
+@socketio.on('send_message')
+def on_chat(data):
+    code = data.get('code')
+    msg = data.get('msg')
+    uid = data.get('userId')
+    room = rooms.get(code)
+    if room and uid in room['players'] and msg:
+        name = room['players'][uid]['name']
+        m_data = {'sender': name, 'msg': msg, 'type': 'player', 'uid': uid}
+        room['chat_history'].append(m_data)
+        emit('new_message', m_data, room=code)
+
 @socketio.on('trigger_ai')
 def on_ai(data):
     code = data['code']
     room = rooms.get(code)
     if not room or len(room['players']) < 2: return
-
-    uids = list(room['players'].keys())
-    p1, p2 = random.sample(uids, 2)
-    p1_name = room['players'][p1]['name']
-    p2_name = room['players'][p2]['name']
-
-    prompt = random.choice(AI_PROMPTS).format(p1=p1_name, p2=p2_name)
-    
-    # إرسال كـ Notification وكـ رسالة شات
-    ai_msg = {'sender': 'AI Bot 🤖', 'msg': prompt, 'type': 'ai'}
-    room['chat_history'].append(ai_msg)
-    
-    emit('ai_message', {'msg': prompt}, room=code) # للفقاعة
-    emit('new_message', ai_msg, room=code) # للشات
+    try:
+        uids = list(room['players'].keys())
+        p1, p2 = random.sample(uids, 2)
+        prompt = random.choice(AI_PROMPTS).format(
+            p1=room['players'][p1]['name'], 
+            p2=room['players'][p2]['name']
+        )
+        ai_msg = {'sender': 'AI Bot 🤖', 'msg': prompt, 'type': 'ai'}
+        room['chat_history'].append(ai_msg)
+        emit('ai_message', {'msg': prompt}, room=code)
+        emit('new_message', ai_msg, room=code)
+    except: pass
 
 @socketio.on('request_punishment')
 def on_punish(data):
-    punishments = ["ارقص بلدي", "قلد صوت قرد", "اعترف بسر", "اعمل 10 ضغط"]
+    punishments = ["ارقص", "قلد قرد", "اعترف بسر", "اعمل ضغط"]
     img = random.randint(1, 7)
     emit('show_punishment', {'text': random.choice(punishments), 'image': f"{img}.jpeg"}, room=data['code'])
 
@@ -204,13 +227,15 @@ def on_reset(data):
     code = data['code']
     if code in rooms:
         rooms[code]['state'] = 'lobby'
-        rooms[code]['chat_history'].append({'sender': 'System', 'msg': 'تم إعادة اللعبة', 'type': 'system'})
+        rooms[code]['votes'] = {}
         emit('return_to_lobby', {}, room=code)
 
 def update_ui(code):
     if code in rooms:
-        players = [{'name': p['name']} for p in rooms[code]['players'].values()]
+        # نرسل الـ ID عشان التصويت
+        players = [{'name': p['name'], 'id': uid} for uid, p in rooms[code]['players'].items()]
         emit('update_players', {'players': players}, room=code)
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
+
