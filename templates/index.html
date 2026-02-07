@@ -1,137 +1,257 @@
-from flask import Flask, render_template, request, send_from_directory
-from flask_socketio import SocketIO, join_room, emit
-import random
-import string
-
-app = Flask(__name__)
-app.config['SECRET_KEY'] = 'ultimate_secret_key_2026'
-socketio = SocketIO(app, cors_allowed_origins="*")
-
-# --- قاعدة البيانات الموسعة ---
-GAME_DATA = {
-    "أماكن عامة": ["المطار", "المستشفى", "الجامعة", "محطة المترو", "المكتبة العامة", "السوبر ماركت"],
-    "أماكن ترفيه": ["السينما", "الملاهي", "الكافيه", "الجيم (GYM)", "الشاطئ", "حديقة الحيوان"],
-    "أماكن خاصة": ["قسم الشرطة", "محطة الفضاء", "السفارة", "البنك", "استوديو تصوير", "غواصة حربية"]
-}
-
-# تجميع كل الأماكن في قائمة واحدة للمساعدة
-ALL_LOCATIONS = [loc for cat in GAME_DATA.values() for loc in cat]
-
-PUNISHMENTS = [
-    "قل نكتة بايخة ولو محدش ضحك تعيد",
-    "ارقص بلدي لمدة دقيقة",
-    "اعمل 10 ضغط حالاً",
-    "اتصل بآخر رقم وقوله 'أنا بحبك'",
-    "قلد صوت حيوان يختاره الجمهور",
-    "اعترف بآخر كذبة كذبتها",
-    "اشرب كوباية مية كاملة مرة واحدة"
-]
-
-rooms = {}
-
-# --- دالة سحرية لقراءة الصور من المجلد الرئيسي ---
-@app.route('/assets/<path:filename>')
-def custom_static(filename):
-    return send_from_directory('.', filename)
-
-def generate_code():
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-# --- Socket Events ---
-
-@app.route('/ping') # للتأكد أن السيرفر يعمل
-def ping(): return "Pong"
-
-@socketio.on('create_room')
-def on_create(data):
-    code = generate_code()
-    name = data['name']
-    rooms[code] = {
-        'host': request.sid, # تسجيل من هو الأدمن
-        'players': {request.sid: {'name': name, 'score': 0}},
-        'state': 'lobby',
-        'game_info': {}
-    }
-    join_room(code)
-    emit('room_created', {'code': code, 'is_host': True})
-    emit('update_ui', {'players': get_players_list(code), 'is_host': True}, room=code)
-
-@socketio.on('join_room')
-def on_join(data):
-    code = data['code'].upper()
-    name = data['name']
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مشروع البرص - Ultimate Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap" rel="stylesheet">
     
-    if code not in rooms:
-        emit('error_msg', {'msg': 'الغرفة غير موجودة!'})
-        return
+    <style>
+        body { font-family: 'Tajawal', sans-serif; }
+        .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .gradient-text { background: linear-gradient(to right, #4facfe, #00f2fe); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .card-flip { perspective: 1000px; }
+        .card-inner { transition: transform 0.6s; transform-style: preserve-3d; }
+        .flipped .card-inner { transform: rotateY(180deg); }
+        .card-face { backface-visibility: hidden; }
+        .card-back { transform: rotateY(180deg); }
+    </style>
+</head>
+<body class="bg-gray-900 text-white h-screen overflow-hidden flex flex-col items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
 
-    if len(rooms[code]['players']) >= 10:
-        emit('error_msg', {'msg': 'الغرفة ممتلئة!'})
-        return
+    <div class="absolute top-5 flex items-center gap-3">
+        <img src="/assets/logo.png" class="w-12 h-12 rounded-full border-2 border-blue-500 shadow-lg shadow-blue-500/50">
+        <h1 class="text-3xl font-black tracking-wider gradient-text">Humans vs Gecko</h1>
+    </div>
 
-    join_room(code)
-    rooms[code]['players'][request.sid] = {'name': name, 'score': 0}
-    
-    # إشعار الجميع
-    is_host = (rooms[code]['host'] == request.sid)
-    emit('join_success', {'code': code, 'is_host': is_host})
-    emit('update_ui', {'players': get_players_list(code)}, room=code)
+    <div class="w-full max-w-md p-6 relative">
+        
+        <div id="screen-login" class="glass rounded-2xl p-8 shadow-2xl transform transition-all hover:scale-105 duration-300">
+            <h2 class="text-xl font-bold mb-6 text-center text-gray-300">تسجيل الدخول</h2>
+            <input type="text" id="username" placeholder="اسمك المستعار" class="w-full bg-gray-800 border border-gray-600 rounded-lg p-3 mb-4 text-center focus:ring-2 focus:ring-blue-500 outline-none transition">
+            
+            <button onclick="createRoom()" class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 p-3 rounded-lg font-bold shadow-lg mb-4 transition transform active:scale-95">
+                إنشاء غرفة جديدة 🚀
+            </button>
+            
+            <div class="relative flex py-2 items-center">
+                <div class="flex-grow border-t border-gray-600"></div>
+                <span class="flex-shrink mx-4 text-gray-500 text-sm">أو انضم لغرفة</span>
+                <div class="flex-grow border-t border-gray-600"></div>
+            </div>
 
-@socketio.on('start_game')
-def on_start(data):
-    code = data['code']
-    room = rooms.get(code)
-    
-    # تحقق أمني: هل المرسل هو الأدمن؟
-    if room['host'] != request.sid:
-        return 
+            <div class="flex gap-2 mt-4">
+                <input type="text" id="roomCodeInput" placeholder="كود الغرفة" class="w-2/3 bg-gray-800 border border-gray-600 rounded-lg p-3 text-center uppercase tracking-widest outline-none">
+                <button onclick="joinRoom()" class="w-1/3 bg-gray-700 hover:bg-gray-600 rounded-lg font-bold transition">دخول</button>
+            </div>
+        </div>
 
-    if len(room['players']) < 3:
-        emit('error_msg', {'msg': 'تحتاج 3 لاعبين على الأقل!'})
-        return
+        <div id="screen-lobby" class="glass rounded-2xl p-6 hidden">
+            <div class="text-center mb-6">
+                <p class="text-gray-400 text-sm">كود الغرفة</p>
+                <h1 id="lobbyCodeDisplay" class="text-5xl font-black text-blue-400 tracking-widest my-2 select-all cursor-pointer">CODE</h1>
+                <p class="text-xs text-gray-500">شارك الكود مع أصدقائك</p>
+            </div>
 
-    # إعداد اللعبة
-    category = random.choice(list(GAME_DATA.keys()))
-    location = random.choice(GAME_DATA[category])
-    all_sids = list(room['players'].keys())
-    gecko_sid = random.choice(all_sids)
-    
-    room['state'] = 'playing'
-    room['game_info'] = {'location': location, 'gecko': gecko_sid}
+            <div class="bg-gray-800/50 rounded-xl p-4 min-h-[150px] mb-4">
+                <h3 class="text-sm font-bold text-gray-400 mb-2">اللاعبين المتصلين:</h3>
+                <div id="playersList" class="flex flex-wrap gap-2 justify-center">
+                    </div>
+            </div>
 
-    # إرسال البيانات لكل لاعب (Private Info)
-    for sid in all_sids:
-        role = 'gecko' if sid == gecko_sid else 'human'
-        emit('game_started', {
-            'role': role,
-            'location': location if role == 'human' else "???",
-            'category': category,
-            'all_locations': ALL_LOCATIONS # قائمة المساعدة
-        }, room=sid)
+            <button id="startBtn" onclick="startGame()" class="w-full bg-green-600 hover:bg-green-500 p-4 rounded-xl font-bold shadow-lg shadow-green-900/50 hidden transition transform hover:-translate-y-1">
+                بدء اللعبة الآن 🎮
+            </button>
+            <p id="waitingText" class="text-center text-gray-500 mt-4 animate-pulse">في انتظار الأدمن لبدء اللعب...</p>
+        </div>
 
-    # تشغيل التايمر للكل
-    emit('start_timer', {'duration': 300}, room=code)
+        <div id="screen-game" class="hidden w-full">
+            
+            <div class="card-flip w-full h-48 cursor-pointer group mb-6" onclick="this.classList.toggle('flipped')">
+                <div class="card-inner relative w-full h-full text-center rounded-2xl shadow-2xl">
+                    <div class="card-face absolute w-full h-full bg-gradient-to-br from-gray-700 to-gray-800 rounded-2xl flex flex-col items-center justify-center border border-gray-600">
+                        <span class="text-4xl mb-2">🕵️</span>
+                        <h3 class="text-xl font-bold">اضغط لكشف دورك</h3>
+                        <p class="text-xs text-red-400 mt-2">لا تدع أحداً يرى شاشتك!</p>
+                    </div>
+                    <div class="card-face card-back absolute w-full h-full bg-gradient-to-br from-blue-900 to-gray-900 rounded-2xl flex flex-col items-center justify-center border border-blue-500 p-4">
+                        <div id="roleContent"></div>
+                    </div>
+                </div>
+            </div>
 
-@socketio.on('request_punishment')
-def on_punish(data):
-    code = data['code']
-    p_text = random.choice(PUNISHMENTS)
-    p_img = random.randint(1, 7) # صور من 1.jpeg لـ 7.jpeg
-    emit('show_punishment', {'text': p_text, 'image': f"{p_img}.jpeg"}, room=code)
+            <div class="bg-gray-800 rounded-full h-4 w-full mb-2 overflow-hidden border border-gray-700">
+                <div id="timerBar" class="bg-blue-500 h-full w-full transition-all duration-1000 ease-linear"></div>
+            </div>
+            <p id="timerText" class="text-center font-mono text-xl mb-6 text-blue-300">05:00</p>
 
-@socketio.on('reset_game')
-def on_reset(data):
-    code = data['code']
-    if rooms.get(code) and rooms[code]['host'] == request.sid:
-        rooms[code]['state'] = 'lobby'
-        emit('return_to_lobby', {}, room=code)
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <button onclick="toggleLocations()" class="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-sm">🗺️ قائمة الأماكن</button>
+                <button onclick="requestPunishment()" class="bg-red-600 hover:bg-red-500 p-3 rounded-lg text-sm shadow-red-900/50 shadow-lg">🎡 عجلة العقاب</button>
+            </div>
+            
+            <button id="resetBtn" onclick="resetGame()" class="w-full bg-gray-800 border border-gray-600 text-gray-400 p-3 rounded-lg hidden">إنهاء اللعبة والعودة</button>
 
-def get_players_list(code):
-    return [{'name': p['name'], 'id': sid} for sid, p in rooms[code]['players'].items()]
+            <div id="locModal" class="hidden absolute top-0 left-0 w-full h-full bg-gray-900/95 z-50 p-4 rounded-xl overflow-y-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-lg">كل الأماكن المحتملة</h3>
+                    <button onclick="toggleLocations()" class="text-red-500 font-bold">إغلاق ✕</button>
+                </div>
+                <div id="locGrid" class="grid grid-cols-2 gap-2 text-xs text-gray-300"></div>
+            </div>
+        </div>
 
-if __name__ == '__main__':
-    socketio.run(app, debug=True)
+    </div>
+
+    <script>
+        const socket = io();
+        let myCode = "";
+        let isHost = false;
+
+        // --- Helper Functions ---
+        function showScreen(id) {
+            ['screen-login', 'screen-lobby', 'screen-game'].forEach(s => document.getElementById(s).classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function playNotification() {
+            // صوت خفيف عند وصول رسالة أو حدث
+            const audio = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-software-interface-start-2574.mp3');
+            audio.volume = 0.5;
+            audio.play().catch(e=>{});
+        }
+
+        // --- Logic ---
+        function createRoom() {
+            const name = document.getElementById('username').value;
+            if(!name) return Swal.fire('خطأ', 'اكتب اسمك الأول!', 'warning');
+            socket.emit('create_room', {name});
+        }
+
+        function joinRoom() {
+            const name = document.getElementById('username').value;
+            const code = document.getElementById('roomCodeInput').value;
+            if(!name || !code) return Swal.fire('خطأ', 'البيانات ناقصة', 'warning');
+            socket.emit('join_room', {name, code});
+        }
+
+        socket.on('error_msg', data => Swal.fire('عفواً', data.msg, 'error'));
+
+        socket.on('room_created', data => {
+            myCode = data.code;
+            isHost = true;
+            enterLobby();
+        });
+
+        socket.on('join_success', data => {
+            myCode = data.code;
+            isHost = data.is_host;
+            enterLobby();
+        });
+
+        function enterLobby() {
+            showScreen('screen-lobby');
+            document.getElementById('lobbyCodeDisplay').innerText = myCode;
+            if(isHost) {
+                document.getElementById('startBtn').classList.remove('hidden');
+                document.getElementById('waitingText').classList.add('hidden');
+                document.getElementById('resetBtn').classList.remove('hidden');
+            }
+        }
+
+        socket.on('update_ui', data => {
+            const list = document.getElementById('playersList');
+            list.innerHTML = data.players.map(p => `
+                <div class="bg-gray-700 px-3 py-1 rounded-full text-sm flex items-center gap-2 border border-gray-600 animate-pulse">
+                    <div class="w-2 h-2 rounded-full bg-green-500"></div> ${p.name}
+                </div>
+            `).join('');
+            playNotification();
+        });
+
+        function startGame() {
+            socket.emit('start_game', {code: myCode});
+        }
+
+        socket.on('game_started', data => {
+            showScreen('screen-game');
+            const content = document.getElementById('roleContent');
+            const locGrid = document.getElementById('locGrid');
+            
+            // تعبئة كارت الدور
+            if(data.role === 'gecko') {
+                content.innerHTML = `
+                    <h2 class="text-3xl font-black text-red-500 mb-2">أنت البرص 🦎</h2>
+                    <p class="text-sm text-gray-300">مهمتك: اعرف المكان من كلامهم من غير ما تتقفش!</p>
+                `;
+            } else {
+                content.innerHTML = `
+                    <h2 class="text-3xl font-black text-blue-400 mb-2">مواطن 👮</h2>
+                    <p class="text-gray-400 text-xs mb-2">المكان:</p>
+                    <h3 class="text-2xl font-bold text-white bg-gray-800 px-4 py-2 rounded-lg border border-blue-500">${data.location}</h3>
+                `;
+            }
+
+            // تعبئة قائمة المساعدة
+            locGrid.innerHTML = data.all_locations.map(l => `<div class="bg-gray-800 p-2 rounded border border-gray-700 text-center">${l}</div>`).join('');
+        });
+
+        socket.on('start_timer', data => {
+            let timeLeft = data.duration;
+            const bar = document.getElementById('timerBar');
+            const txt = document.getElementById('timerText');
+            
+            const interval = setInterval(() => {
+                timeLeft--;
+                const min = Math.floor(timeLeft / 60);
+                const sec = timeLeft % 60;
+                txt.innerText = `${min}:${sec < 10 ? '0'+sec : sec}`;
+                bar.style.width = (timeLeft / data.duration * 100) + "%";
+                
+                if(timeLeft <= 0) {
+                    clearInterval(interval);
+                    bar.style.width = "0%";
+                    txt.innerText = "انتهى الوقت!";
+                    playNotification();
+                }
+            }, 1000);
+        });
+
+        function requestPunishment() {
+            socket.emit('request_punishment', {code: myCode});
+        }
+
+        socket.on('show_punishment', data => {
+            Swal.fire({
+                title: '🔥 حان وقت العقاب 🔥',
+                text: data.text,
+                imageUrl: `/assets/${data.image}`, // استخدام المسار الجديد
+                imageWidth: 300,
+                imageHeight: 300,
+                imageAlt: 'Punishment Image',
+                background: '#1f2937',
+                color: '#fff',
+                confirmButtonColor: '#d33'
+            });
+        });
+
+        function toggleLocations() {
+            document.getElementById('locModal').classList.toggle('hidden');
+        }
+
+        function resetGame() {
+            if(confirm('هل أنت متأكد من إنهاء اللعبة؟')) {
+                socket.emit('reset_game', {code: myCode});
+            }
+        }
+
+        socket.on('return_to_lobby', () => {
+            enterLobby();
+        });
+
+    </script>
+</body>
+</html>
