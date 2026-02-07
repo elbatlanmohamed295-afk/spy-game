@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>مشروع البرص - Ultimate Edition</title>
+    <title>لعبة البرص الذكية 🤖</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap" rel="stylesheet">
-    
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Tajawal', sans-serif; }
-        .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
-        .gradient-text { background: linear-gradient(to right, #4facfe, #00f2fe); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        body { font-family: 'Cairo', sans-serif; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .ai-glow { animation: glow 2s infinite alternate; }
+        @keyframes glow { from { box-shadow: 0 0 5px #00d2ff; } to { box-shadow: 0 0 20px #00d2ff, 0 0 10px #3a7bd5; } }
         .card-flip { perspective: 1000px; }
         .card-inner { transition: transform 0.6s; transform-style: preserve-3d; }
         .flipped .card-inner { transform: rotateY(180deg); }
@@ -20,238 +20,244 @@
         .card-back { transform: rotateY(180deg); }
     </style>
 </head>
-<body class="bg-gray-900 text-white h-screen overflow-hidden flex flex-col items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')]">
 
-    <div class="absolute top-5 flex items-center gap-3">
-        <img src="/assets/logo.png" class="w-12 h-12 rounded-full border-2 border-blue-500 shadow-lg shadow-blue-500/50">
-        <h1 class="text-3xl font-black tracking-wider gradient-text">Humans vs Gecko</h1>
+    <div class="absolute top-5 flex items-center gap-3 animate-bounce">
+        <img src="/assets/logo.png" class="w-16 h-16 rounded-full border-4 border-blue-500 shadow-lg">
     </div>
 
-    <div class="w-full max-w-md p-6 relative">
+    <div class="w-full max-w-md p-4 relative z-10">
         
-        <div id="screen-login" class="glass rounded-2xl p-8 shadow-2xl transform transition-all hover:scale-105 duration-300">
-            <h2 class="text-xl font-bold mb-6 text-center text-gray-300">تسجيل الدخول</h2>
-            <input type="text" id="username" placeholder="اسمك المستعار" class="w-full bg-gray-800 border border-gray-600 rounded-lg p-3 mb-4 text-center focus:ring-2 focus:ring-blue-500 outline-none transition">
+        <div id="screen-login" class="glass rounded-3xl p-8 shadow-2xl">
+            <h2 class="text-2xl font-bold mb-6 text-center text-blue-400">مرحباً بك مجدداً 👋</h2>
+            <input type="text" id="username" placeholder="اسمك إيه؟" class="w-full bg-slate-800 border border-slate-600 rounded-xl p-4 mb-4 text-center text-lg focus:ring-2 focus:ring-blue-500 outline-none">
             
-            <button onclick="createRoom()" class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 p-3 rounded-lg font-bold shadow-lg mb-4 transition transform active:scale-95">
+            <button onclick="joinGame(true)" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 p-4 rounded-xl font-bold shadow-lg mb-4 transition transform active:scale-95">
                 إنشاء غرفة جديدة 🚀
             </button>
             
-            <div class="relative flex py-2 items-center">
-                <div class="flex-grow border-t border-gray-600"></div>
-                <span class="flex-shrink mx-4 text-gray-500 text-sm">أو انضم لغرفة</span>
-                <div class="flex-grow border-t border-gray-600"></div>
-            </div>
-
             <div class="flex gap-2 mt-4">
-                <input type="text" id="roomCodeInput" placeholder="كود الغرفة" class="w-2/3 bg-gray-800 border border-gray-600 rounded-lg p-3 text-center uppercase tracking-widest outline-none">
-                <button onclick="joinRoom()" class="w-1/3 bg-gray-700 hover:bg-gray-600 rounded-lg font-bold transition">دخول</button>
+                <input type="text" id="roomCodeInput" placeholder="كود الغرفة" class="w-2/3 bg-slate-800 border border-slate-600 rounded-xl p-4 text-center uppercase tracking-widest outline-none font-mono">
+                <button onclick="joinGame(false)" class="w-1/3 bg-slate-700 hover:bg-slate-600 rounded-xl font-bold transition">دخول</button>
             </div>
+            
+            <button onclick="clearData()" class="text-xs text-gray-500 mt-4 underline w-full text-center">نسيان بياناتي (تسجيل خروج)</button>
         </div>
 
-        <div id="screen-lobby" class="glass rounded-2xl p-6 hidden">
+        <div id="screen-lobby" class="glass rounded-3xl p-6 hidden">
             <div class="text-center mb-6">
                 <p class="text-gray-400 text-sm">كود الغرفة</p>
-                <h1 id="lobbyCodeDisplay" class="text-5xl font-black text-blue-400 tracking-widest my-2 select-all cursor-pointer">CODE</h1>
-                <p class="text-xs text-gray-500">شارك الكود مع أصدقائك</p>
+                <h1 id="lobbyCode" class="text-6xl font-black text-blue-400 tracking-widest my-2 cursor-pointer select-all">CODE</h1>
             </div>
 
-            <div class="bg-gray-800/50 rounded-xl p-4 min-h-[150px] mb-4">
-                <h3 class="text-sm font-bold text-gray-400 mb-2">اللاعبين المتصلين:</h3>
-                <div id="playersList" class="flex flex-wrap gap-2 justify-center">
-                    </div>
+            <div class="bg-slate-800/50 rounded-xl p-4 min-h-[100px] mb-4">
+                <h3 class="text-sm font-bold text-gray-400 mb-2">المتصلون الآن:</h3>
+                <div id="playersList" class="flex flex-wrap gap-2 justify-center"></div>
             </div>
 
-            <button id="startBtn" onclick="startGame()" class="w-full bg-green-600 hover:bg-green-500 p-4 rounded-xl font-bold shadow-lg shadow-green-900/50 hidden transition transform hover:-translate-y-1">
-                بدء اللعبة الآن 🎮
+            <button id="startBtn" onclick="startGame()" class="w-full bg-green-600 hover:bg-green-500 p-4 rounded-xl font-bold shadow-lg hidden transition">
+                بدء اللعبة 🎮
             </button>
-            <p id="waitingText" class="text-center text-gray-500 mt-4 animate-pulse">في انتظار الأدمن لبدء اللعب...</p>
+            <p id="waitText" class="text-center text-gray-500 mt-4 animate-pulse">في انتظار الأدمن...</p>
         </div>
 
         <div id="screen-game" class="hidden w-full">
             
-            <div class="card-flip w-full h-48 cursor-pointer group mb-6" onclick="this.classList.toggle('flipped')">
+            <div id="aiBubble" class="hidden mb-4 bg-gradient-to-r from-purple-900 to-slate-900 border border-purple-500 p-3 rounded-2xl rounded-tr-none shadow-lg ai-glow relative">
+                <span class="absolute -top-3 -right-2 text-2xl">🤖</span>
+                <p id="aiText" class="text-sm font-bold text-purple-200">اقتراح الذكاء الاصطناعي...</p>
+            </div>
+
+            <div class="card-flip w-full h-56 cursor-pointer group mb-6" onclick="this.classList.toggle('flipped')">
                 <div class="card-inner relative w-full h-full text-center rounded-2xl shadow-2xl">
-                    <div class="card-face absolute w-full h-full bg-gradient-to-br from-gray-700 to-gray-800 rounded-2xl flex flex-col items-center justify-center border border-gray-600">
-                        <span class="text-4xl mb-2">🕵️</span>
+                    <div class="card-face absolute w-full h-full bg-slate-800 rounded-2xl flex flex-col items-center justify-center border-2 border-slate-600">
+                        <span class="text-5xl mb-4">🔒</span>
                         <h3 class="text-xl font-bold">اضغط لكشف دورك</h3>
-                        <p class="text-xs text-red-400 mt-2">لا تدع أحداً يرى شاشتك!</p>
                     </div>
-                    <div class="card-face card-back absolute w-full h-full bg-gradient-to-br from-blue-900 to-gray-900 rounded-2xl flex flex-col items-center justify-center border border-blue-500 p-4">
+                    <div class="card-face card-back absolute w-full h-full bg-slate-900 rounded-2xl flex flex-col items-center justify-center border-2 border-blue-500 p-4">
                         <div id="roleContent"></div>
                     </div>
                 </div>
             </div>
 
-            <div class="bg-gray-800 rounded-full h-4 w-full mb-2 overflow-hidden border border-gray-700">
+            <div class="bg-slate-800 rounded-full h-3 w-full mb-2 overflow-hidden">
                 <div id="timerBar" class="bg-blue-500 h-full w-full transition-all duration-1000 ease-linear"></div>
             </div>
             <p id="timerText" class="text-center font-mono text-xl mb-6 text-blue-300">05:00</p>
 
-            <div class="grid grid-cols-2 gap-4 mb-4">
-                <button onclick="toggleLocations()" class="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-sm">🗺️ قائمة الأماكن</button>
-                <button onclick="requestPunishment()" class="bg-red-600 hover:bg-red-500 p-3 rounded-lg text-sm shadow-red-900/50 shadow-lg">🎡 عجلة العقاب</button>
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <button onclick="toggleLocs()" class="bg-slate-700 p-3 rounded-xl text-sm hover:bg-slate-600 transition">🗺️ الأماكن</button>
+                <button onclick="reqPunish()" class="bg-red-900/80 text-red-200 p-3 rounded-xl text-sm hover:bg-red-800 transition">🎡 عقاب</button>
             </div>
             
-            <button id="resetBtn" onclick="resetGame()" class="w-full bg-gray-800 border border-gray-600 text-gray-400 p-3 rounded-lg hidden">إنهاء اللعبة والعودة</button>
+            <button id="aiBtn" onclick="triggerAI()" class="w-full bg-purple-600 hover:bg-purple-500 p-3 rounded-xl font-bold shadow-lg shadow-purple-900/50 mb-4 hidden">
+                🤖 اقتراح من الذكاء الاصطناعي
+            </button>
 
-            <div id="locModal" class="hidden absolute top-0 left-0 w-full h-full bg-gray-900/95 z-50 p-4 rounded-xl overflow-y-auto">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="font-bold text-lg">كل الأماكن المحتملة</h3>
-                    <button onclick="toggleLocations()" class="text-red-500 font-bold">إغلاق ✕</button>
+            <button id="resetBtn" onclick="resetGame()" class="w-full bg-slate-800 border border-slate-600 text-gray-400 p-3 rounded-xl hidden">إنهاء اللعبة</button>
+
+            <div id="locModal" class="hidden fixed inset-0 bg-black/90 z-50 p-6 overflow-y-auto">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="font-bold text-xl">الأماكن المحتملة</h3>
+                    <button onclick="toggleLocs()" class="text-red-500 text-2xl">✕</button>
                 </div>
-                <div id="locGrid" class="grid grid-cols-2 gap-2 text-xs text-gray-300"></div>
+                <div id="locGrid" class="grid grid-cols-2 gap-3 text-sm text-gray-300"></div>
             </div>
         </div>
-
     </div>
 
     <script>
         const socket = io();
-        let myCode = "";
-        let isHost = false;
+        let myData = {
+            name: localStorage.getItem('gm_name') || "",
+            userId: localStorage.getItem('gm_uid') || "",
+            code: localStorage.getItem('gm_code') || ""
+        };
 
-        // --- Helper Functions ---
-        function showScreen(id) {
-            ['screen-login', 'screen-lobby', 'screen-game'].forEach(s => document.getElementById(s).classList.add('hidden'));
-            document.getElementById(id).classList.remove('hidden');
+        // --- Auto Login Logic ---
+        window.onload = () => {
+            if(myData.userId && myData.code) {
+                document.getElementById('username').value = myData.name;
+                document.getElementById('roomCodeInput').value = myData.code;
+                // محاولة الاتصال التلقائي
+                joinGame(false); 
+            }
+        };
+
+        function clearData() {
+            localStorage.clear();
+            location.reload();
         }
 
-        function playNotification() {
-            // صوت خفيف عند وصول رسالة أو حدث
-            const audio = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-software-interface-start-2574.mp3');
-            audio.volume = 0.5;
-            audio.play().catch(e=>{});
-        }
-
-        // --- Logic ---
-        function createRoom() {
-            const name = document.getElementById('username').value;
-            if(!name) return Swal.fire('خطأ', 'اكتب اسمك الأول!', 'warning');
-            socket.emit('create_room', {name});
-        }
-
-        function joinRoom() {
+        // --- Main Functions ---
+        function joinGame(create) {
             const name = document.getElementById('username').value;
             const code = document.getElementById('roomCodeInput').value;
-            if(!name || !code) return Swal.fire('خطأ', 'البيانات ناقصة', 'warning');
-            socket.emit('join_room', {name, code});
-        }
-
-        socket.on('error_msg', data => Swal.fire('عفواً', data.msg, 'error'));
-
-        socket.on('room_created', data => {
-            myCode = data.code;
-            isHost = true;
-            enterLobby();
-        });
-
-        socket.on('join_success', data => {
-            myCode = data.code;
-            isHost = data.is_host;
-            enterLobby();
-        });
-
-        function enterLobby() {
-            showScreen('screen-lobby');
-            document.getElementById('lobbyCodeDisplay').innerText = myCode;
-            if(isHost) {
-                document.getElementById('startBtn').classList.remove('hidden');
-                document.getElementById('waitingText').classList.add('hidden');
-                document.getElementById('resetBtn').classList.remove('hidden');
+            
+            if(!name) return Swal.fire('تنبيه', 'اكتب اسمك الأول!', 'warning');
+            
+            // حفظ البيانات محلياً
+            localStorage.setItem('gm_name', name);
+            if(!myData.userId) {
+                // لو مفيش ID ننشئ واحد عشوائي مؤقت لحد ما السيرفر يعتمدنا
+                // لكن الأفضل نعتمد على السيرفر، هنا سنرسل الاسم فقط
             }
+
+            socket.emit('join_game', {
+                name: name,
+                code: create ? null : code,
+                create: create,
+                userId: myData.userId // نرسل الـ ID المحفوظ لو موجود
+            });
         }
 
-        socket.on('update_ui', data => {
+        // --- Socket Events ---
+        socket.on('join_success', data => {
+            // تحديث البيانات المحفوظة
+            myData.userId = data.userId;
+            myData.code = data.code;
+            localStorage.setItem('gm_uid', data.userId);
+            localStorage.setItem('gm_code', data.code);
+            
+            showScreen('screen-lobby');
+            document.getElementById('lobbyCode').innerText = data.code;
+            
+            if(data.is_host) {
+                document.getElementById('startBtn').classList.remove('hidden');
+                document.getElementById('resetBtn').classList.remove('hidden');
+                document.getElementById('aiBtn').classList.remove('hidden');
+                document.getElementById('waitText').classList.add('hidden');
+            }
+
+            // لو دخلنا واللعبة شغالة (إعادة اتصال)
+            if(data.state === 'playing') {
+                showScreen('screen-game');
+            }
+        });
+
+        socket.on('error_msg', data => Swal.fire('خطأ', data.msg, 'error'));
+
+        socket.on('update_players', data => {
             const list = document.getElementById('playersList');
             list.innerHTML = data.players.map(p => `
-                <div class="bg-gray-700 px-3 py-1 rounded-full text-sm flex items-center gap-2 border border-gray-600 animate-pulse">
-                    <div class="w-2 h-2 rounded-full bg-green-500"></div> ${p.name}
+                <div class="bg-slate-700 px-3 py-1 rounded-lg text-sm flex items-center gap-2 border border-slate-600">
+                    <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div> ${p.name}
                 </div>
             `).join('');
-            playNotification();
         });
 
-        function startGame() {
-            socket.emit('start_game', {code: myCode});
-        }
+        function startGame() { socket.emit('start_game', {code: myData.code}); }
 
         socket.on('game_started', data => {
             showScreen('screen-game');
             const content = document.getElementById('roleContent');
             const locGrid = document.getElementById('locGrid');
             
-            // تعبئة كارت الدور
             if(data.role === 'gecko') {
-                content.innerHTML = `
-                    <h2 class="text-3xl font-black text-red-500 mb-2">أنت البرص 🦎</h2>
-                    <p class="text-sm text-gray-300">مهمتك: اعرف المكان من كلامهم من غير ما تتقفش!</p>
-                `;
+                content.innerHTML = `<h2 class="text-3xl font-black text-red-500 mb-2">أنت البرص 🦎</h2><p class="text-sm text-gray-300">اسمع وحاول تفهم!</p>`;
             } else {
-                content.innerHTML = `
-                    <h2 class="text-3xl font-black text-blue-400 mb-2">مواطن 👮</h2>
-                    <p class="text-gray-400 text-xs mb-2">المكان:</p>
-                    <h3 class="text-2xl font-bold text-white bg-gray-800 px-4 py-2 rounded-lg border border-blue-500">${data.location}</h3>
-                `;
+                content.innerHTML = `<h2 class="text-3xl font-black text-blue-400 mb-2">مواطن 👮</h2><h3 class="text-2xl font-bold bg-slate-800 px-4 py-2 rounded-lg border border-blue-500">${data.location}</h3>`;
             }
 
-            // تعبئة قائمة المساعدة
-            locGrid.innerHTML = data.all_locations.map(l => `<div class="bg-gray-800 p-2 rounded border border-gray-700 text-center">${l}</div>`).join('');
+            locGrid.innerHTML = data.all_locations.map(l => `<div class="bg-slate-800 p-3 rounded-lg text-center border border-slate-700">${l}</div>`).join('');
+            
+            if(data.reconnect) {
+                Swal.fire('أهلاً بعودتك', 'تم استعادة دورك بنجاح', 'success');
+            }
         });
 
         socket.on('start_timer', data => {
-            let timeLeft = data.duration;
+            let t = data.duration;
             const bar = document.getElementById('timerBar');
             const txt = document.getElementById('timerText');
-            
-            const interval = setInterval(() => {
-                timeLeft--;
-                const min = Math.floor(timeLeft / 60);
-                const sec = timeLeft % 60;
-                txt.innerText = `${min}:${sec < 10 ? '0'+sec : sec}`;
-                bar.style.width = (timeLeft / data.duration * 100) + "%";
-                
-                if(timeLeft <= 0) {
-                    clearInterval(interval);
-                    bar.style.width = "0%";
-                    txt.innerText = "انتهى الوقت!";
-                    playNotification();
-                }
+            const int = setInterval(() => {
+                t--;
+                let m = Math.floor(t/60), s = t%60;
+                txt.innerText = `${m}:${s<10?'0'+s:s}`;
+                bar.style.width = (t/data.duration*100) + "%";
+                if(t<=0) clearInterval(int);
             }, 1000);
         });
 
-        function requestPunishment() {
-            socket.emit('request_punishment', {code: myCode});
-        }
+        // --- AI & Punishment ---
+        function triggerAI() { socket.emit('trigger_ai', {code: myData.code}); }
+
+        socket.on('ai_message', data => {
+            const bubble = document.getElementById('aiBubble');
+            document.getElementById('aiText').innerText = data.msg;
+            bubble.classList.remove('hidden');
+            // إخفاء الرسالة بعد 10 ثواني
+            setTimeout(() => bubble.classList.add('hidden'), 10000);
+            
+            // تشغيل صوت
+            new Audio('https://assets.mixkit.co/sfx/preview/mixkit-sci-fi-click-900.mp3').play().catch(e=>{});
+        });
+
+        function reqPunish() { socket.emit('request_punishment', {code: myData.code}); }
 
         socket.on('show_punishment', data => {
             Swal.fire({
-                title: '🔥 حان وقت العقاب 🔥',
+                title: '🔥 عقاب',
                 text: data.text,
-                imageUrl: `/assets/${data.image}`, // استخدام المسار الجديد
+                imageUrl: `/assets/${data.image}`,
                 imageWidth: 300,
                 imageHeight: 300,
-                imageAlt: 'Punishment Image',
-                background: '#1f2937',
-                color: '#fff',
-                confirmButtonColor: '#d33'
+                background: '#1e293b',
+                color: '#fff'
             });
         });
 
-        function toggleLocations() {
-            document.getElementById('locModal').classList.toggle('hidden');
-        }
-
         function resetGame() {
-            if(confirm('هل أنت متأكد من إنهاء اللعبة؟')) {
-                socket.emit('reset_game', {code: myCode});
-            }
+            if(confirm('إنهاء اللعبة للجميع؟')) socket.emit('reset_game', {code: myData.code});
         }
+        
+        socket.on('return_to_lobby', () => location.reload());
 
-        socket.on('return_to_lobby', () => {
-            enterLobby();
-        });
-
+        function showScreen(id) {
+            ['screen-login', 'screen-lobby', 'screen-game'].forEach(s => document.getElementById(s).classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
+        }
+        function toggleLocs() { document.getElementById('locModal').classList.toggle('hidden'); }
     </script>
 </body>
 </html>
