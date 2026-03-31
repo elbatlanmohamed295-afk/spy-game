@@ -1330,6 +1330,7 @@ select.input-field { cursor: pointer; }
 <body>
 
 {% if page == 'home' %}
+<!-- ===== الصفحة الرئيسية ===== -->
 <div class="home-page">
   <div class="home-logo">UNO</div>
   <div class="home-subtitle">🃏 العبة الكلاسيكية بالعربي</div>
@@ -1365,6 +1366,7 @@ select.input-field { cursor: pointer; }
 </div>
 
 {% elif page == 'game' %}
+<!-- ===== صفحة اللعبة ===== -->
 <div class="game-page">
   <div class="game-header">
     <div class="room-code">الغرفة: <span id="roomCodeDisplay">{{ room_code }}</span></div>
@@ -1373,9 +1375,12 @@ select.input-field { cursor: pointer; }
   </div>
 
   <div class="game-body">
+    <!-- اللعبة الرئيسية -->
     <div class="game-main">
+      <!-- شريط اللاعبين -->
       <div class="players-strip" id="playersStrip"></div>
 
+      <!-- منطقة اللعب -->
       <div class="play-area" id="playArea">
         <div id="waitingRoom" class="waiting-room">
           <div class="waiting-code">
@@ -1399,6 +1404,7 @@ select.input-field { cursor: pointer; }
         </div>
       </div>
 
+      <!-- يد اللاعب -->
       <div class="my-hand-section" id="myHandSection" style="display:none">
         <div class="hand-header">
           <span class="hand-title" id="handTitle">أوراقك</span>
@@ -1410,6 +1416,7 @@ select.input-field { cursor: pointer; }
       </div>
     </div>
 
+    <!-- السيدبار -->
     <div class="sidebar" id="sidebar">
       <button class="sidebar-close" onclick="toggleSidebar()">✕</button>
       <div class="sidebar-tabs">
@@ -1417,6 +1424,7 @@ select.input-field { cursor: pointer; }
         <button class="sidebar-tab" onclick="switchTab('players')">👥 لاعبون</button>
       </div>
 
+      <!-- تاب الشات -->
       <div class="tab-content active" id="tab-chat">
         <div class="chat-messages" id="chatMessages"></div>
         <div class="voice-bar">
@@ -1432,6 +1440,7 @@ select.input-field { cursor: pointer; }
         </div>
       </div>
 
+      <!-- تاب اللاعبين -->
       <div class="tab-content" id="tab-players">
         <div class="players-list" id="playersList"></div>
         <div style="padding:12px;border-top:1px solid var(--border)">
@@ -1445,6 +1454,7 @@ select.input-field { cursor: pointer; }
   <button class="mobile-chat-btn" onclick="toggleSidebar()">💬</button>
 </div>
 
+<!-- مودال اختيار اللون -->
 <div class="modal-overlay" id="colorModal" style="display:none">
   <div class="modal">
     <h3>🎨 اختر لوناً</h3>
@@ -1457,6 +1467,7 @@ select.input-field { cursor: pointer; }
   </div>
 </div>
 
+<!-- الفائز -->
 <div class="winner-overlay" id="winnerOverlay" style="display:none">
   <div class="winner-card">
     <div class="winner-emoji">🏆</div>
@@ -1896,6 +1907,7 @@ function showToast(msg) {
   clearTimeout(toastTimeout);
   toastTimeout = setTimeout(() => { t.style.opacity = '0'; }, 3000);
 }
+
 // بعد تحميل الشات الكامل
 const origRender = render;
 window.render = function(state) {
@@ -1904,14 +1916,12 @@ window.render = function(state) {
 };
 
 connect();
+{% endif %}
 </script>
 {% endif %}
 </body>
 </html>
 """
-
-# السطر ده مهم جداً جداً لـ PythonAnywhere
-application = app
 
 if __name__ == '__main__':
     print("=" * 50)
@@ -1920,5 +1930,4 @@ if __name__ == '__main__':
     print("افتح المتصفح على: http://localhost:5000")
     print("=" * 50)
     socketio.run(app, host='0.0.0.0', port=5000, debug=False)
-
 
