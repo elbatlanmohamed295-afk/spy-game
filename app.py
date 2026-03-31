@@ -175,7 +175,8 @@ def build_game_state(room, viewer_sid=None):
             'connected': p['connected'],
             'uno': p.get('uno', False),
             'is_current': i == room['current_player_idx'],
-            'index': i
+            'index': i,
+            'sid': p['sid']
         })
     top_card = room['discard'][-1] if room['discard'] else None
     viewer_idx, _ = find_player(room, viewer_sid) if viewer_sid else (None, None)
@@ -272,7 +273,6 @@ def on_join_game(data):
         emit('error', {'msg': 'الغرفة غير موجودة'})
         return
 
-    # تحقق إذا اللاعب موجود مسبقاً (إعادة اتصال)
     existing_idx = None
     for i, p in enumerate(room['players']):
         if p['name'] == name:
@@ -341,7 +341,6 @@ def on_play_card(data):
         emit('error', {'msg': 'ليس دورك!'})
         return
 
-    # إيجاد الورقة
     card = None
     card_pos = None
     for i, c in enumerate(player['hand']):
@@ -355,29 +354,25 @@ def on_play_card(data):
 
     top_card = room['discard'][-1]
 
-    # تحقق اللعب مع draw_stack
     if room['draw_stack'] > 0:
         if card['value'] == 'draw2' and top_card['value'] == 'draw2':
-            pass  # مسموح
+            pass
         elif card['value'] == 'wild4' and top_card['value'] == 'wild4':
-            pass  # مسموح
+            pass
         else:
             emit('error', {'msg': f'يجب عليك سحب {room["draw_stack"]} ورقة أو اللعب بورقة مماثلة!'})
             return
 
-    # تحقق إمكانية اللعب
     if room['draw_stack'] == 0 and not card_playable(card, top_card, room['current_color']):
         emit('error', {'msg': 'لا يمكنك لعب هذه الورقة!'})
         return
 
-    # Wild color
     if card['color'] == 'wild' and not chosen_color:
         emit('choose_color', {})
         return
     if card['color'] == 'wild' and chosen_color:
         card['chosen_color'] = chosen_color
 
-    # العب الورقة
     player['hand'].pop(card_pos)
     room['discard'].append(card)
 
@@ -393,21 +388,18 @@ def on_play_card(data):
     room['last_action'] = f'{player["name"]} لعب {label}'
     add_chat(room, 'النظام', f'🃏 {player["name"]} لعب: {label}', 'system')
 
-    # تحقق الفوز
     if check_winner(room, idx):
         add_chat(room, 'النظام', f'🏆 {player["name"]} فاز باللعبة!', 'system')
         for p in room['players']:
             socketio.emit('game_state', build_game_state(room, p['sid']), room=p['sid'])
         return
 
-    # UNO
     if len(player['hand']) == 1:
         player['uno'] = True
         add_chat(room, 'النظام', f'🔴 {player["name"]} قال UNO!', 'system')
     else:
         player['uno'] = False
 
-    # تأثيرات الأوراق
     n = len(room['players'])
     if card['value'] == 'skip':
         next_player(room)
@@ -445,7 +437,6 @@ def on_play_card(data):
     else:
         next_player(room)
 
-    # إرسال الحالة
     for p in room['players']:
         socketio.emit('game_state', build_game_state(room, p['sid']), room=p['sid'])
 
@@ -536,6 +527,18 @@ def on_restart(data):
     for p in room['players']:
         socketio.emit('game_state', build_game_state(room, p['sid']), room=p['sid'])
 
+# مسارات خاصة بالصوت WebRTC
+@socketio.on('voice_join_req')
+def on_voice_join_req(data):
+    code = data.get('code')
+    emit('voice_joined_alert', {'sid': request.sid, 'name': data.get('name')}, room=code, include_self=False)
+
+@socketio.on('webrtc_signal')
+def on_webrtc_signal(data):
+    target = data.get('target_sid')
+    if target:
+        emit('webrtc_signal', data, room=target)
+
 @socketio.on('disconnect')
 def on_disconnect():
     for code, room in rooms.items():
@@ -567,11 +570,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   --accent2: #ffa502;
   --text: #e8e8f0;
   --text2: #8888a0;
-  --red: #ff4757;
-  --green: #2ed573;
-  --blue: #1e90ff;
-  --yellow: #ffd700;
-  --wild: #a855f7;
+  --red: #e74c3c;
+  --green: #27ae60;
+  --blue: #2980b9;
+  --yellow: #f39c12;
+  --wild: #333;
   --radius: 12px;
   --shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
@@ -810,13 +813,18 @@ select.input-field { cursor: pointer; }
   width: 70px; height: 100px;
   background: linear-gradient(135deg, #1e3a5f, #2d5a8e);
   border-radius: 10px;
-  border: 2px solid #4a7fbf;
+  border: 2px solid white;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   font-size: 28px;
   transition: all 0.2s;
   position: relative;
   box-shadow: 4px 4px 0 #0a1f3f;
+  color: white;
+  font-weight: 900;
+}
+.deck-pile .deck-oval {
+  width: 80%; height: 60%; background: #e74c3c; border-radius: 50%; display: flex; align-items: center; justify-content: center; transform: rotate(-25deg); border: 2px solid #f1c40f;
 }
 .deck-pile:hover { transform: scale(1.05); }
 .deck-pile::before {
@@ -827,33 +835,76 @@ select.input-field { cursor: pointer; }
   color: var(--text2);
   white-space: nowrap;
 }
-.top-card {
-  width: 80px; height: 115px;
-  border-radius: 12px;
+
+/* ======= كروت UNO الأصلية ======= */
+.top-card, .hand-card {
+  border-radius: 8px;
+  border: 4px solid white;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  font-weight: 900;
-  font-size: 14px;
-  text-align: center;
-  border: 3px solid rgba(255,255,255,0.3);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1);
   position: relative;
   transition: all 0.3s;
+  color: white;
+  overflow: hidden;
+  user-select: none;
+}
+.top-card {
+  width: 80px; height: 115px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1);
   animation: card-played 0.3s ease-out;
 }
-@keyframes card-played {
-  from{transform:scale(0.8) rotate(-5deg);opacity:0}
-  to{transform:scale(1) rotate(0);opacity:1}
+.hand-card {
+  flex-shrink: 0;
+  width: 70px; height: 105px;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
 }
-.top-card .card-value {
-  font-size: clamp(20px, 4vw, 32px);
-  line-height: 1;
+.hand-card:hover { transform: translateY(-15px); z-index: 10; }
+.hand-card.playable { border-color: #f1c40f; box-shadow: 0 0 16px rgba(241,196,15,0.8); }
+.hand-card.playable:hover { box-shadow: 0 8px 24px rgba(241,196,15,1); }
+.hand-card.not-playable { opacity: 0.5; cursor: not-allowed; }
+.hand-card.not-playable:hover { transform: none; }
+
+/* الشكل البيضاوي الأبيض والنصوص للكروت */
+.uno-oval {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%) rotate(-30deg);
+  width: 85%; height: 65%;
+  background: white;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 0 5px rgba(0,0,0,0.5);
+  z-index: 1;
 }
-.top-card .card-label {
-  font-size: 10px;
-  opacity: 0.8;
-  margin-top: 4px;
+.uno-val-center {
+  font-size: 2.2em; font-weight: 900;
+  transform: rotate(30deg);
+  text-shadow: 2px 2px 0 #000;
+  letter-spacing: -1px;
 }
+.c-yellow .uno-val-center { color: var(--yellow); }
+.c-red .uno-val-center { color: var(--red); }
+.c-green .uno-val-center { color: var(--green); }
+.c-blue .uno-val-center { color: var(--blue); }
+.c-wild .uno-val-center { color: #111; text-shadow: none; font-size: 1.5em; }
+
+.corner-val {
+  position: absolute; font-size: 1.1em; font-weight: 900;
+  text-shadow: 1px 1px 0 #000; z-index: 2;
+}
+.corner-tl { top: 2px; left: 4px; }
+.corner-br { bottom: 2px; right: 4px; transform: rotate(180deg); }
+
+/* ألوان الخلفيات الأصلية */
+.c-red { background: linear-gradient(135deg, #c0392b, #e74c3c); }
+.c-green { background: linear-gradient(135deg, #1a6b3a, #27ae60); }
+.c-blue { background: linear-gradient(135deg, #1a3a7a, #2980b9); }
+.c-yellow { background: linear-gradient(135deg, #b8860b, #f39c12); }
+.c-wild { background: linear-gradient(135deg, #8e44ad, #e74c3c, #f1c40f, #2980b9); }
+
+/* ================================== */
+
 .action-info {
   font-size: 13px;
   color: var(--text2);
@@ -910,55 +961,12 @@ select.input-field { cursor: pointer; }
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding-bottom: 8px;
+  padding-bottom: 20px;
+  padding-top: 10px;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
-.hand-card {
-  flex-shrink: 0;
-  width: 65px; height: 95px;
-  border-radius: 10px;
-  cursor: pointer;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  font-weight: 900;
-  font-size: 12px;
-  text-align: center;
-  border: 2px solid rgba(255,255,255,0.2);
-  transition: all 0.2s;
-  position: relative;
-  user-select: none;
-}
-.hand-card:hover { transform: translateY(-12px); z-index: 10; }
-.hand-card.playable {
-  border-color: rgba(255,255,255,0.6);
-  box-shadow: 0 0 16px rgba(255,255,255,0.2);
-}
-.hand-card.playable:hover {
-  box-shadow: 0 8px 24px rgba(255,255,255,0.3);
-}
-.hand-card.not-playable {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.hand-card.not-playable:hover { transform: none; }
-.hand-card .card-val {
-  font-size: clamp(16px, 3vw, 22px);
-  line-height: 1;
-}
-.hand-card .card-lbl {
-  font-size: 9px;
-  opacity: 0.8;
-  margin-top: 3px;
-  line-height: 1.2;
-}
 
-/* ألوان الأوراق */
-.c-red { background: linear-gradient(135deg, #c0392b, #e74c3c); color: white; }
-.c-green { background: linear-gradient(135deg, #1a6b3a, #27ae60); color: white; }
-.c-blue { background: linear-gradient(135deg, #1a3a7a, #2980b9); color: white; }
-.c-yellow { background: linear-gradient(135deg, #b8860b, #f39c12); color: #1a1a00; }
-.c-wild { background: linear-gradient(135deg, #6c3483, #9b59b6, #e74c3c, #f39c12); color: white; }
 .ci-red { color: #ff4757; background: rgba(255,71,87,0.2); }
 .ci-green { color: #2ed573; background: rgba(46,213,115,0.2); }
 .ci-blue { color: #1e90ff; background: rgba(30,144,255,0.2); }
@@ -1330,7 +1338,6 @@ select.input-field { cursor: pointer; }
 <body>
 
 {% if page == 'home' %}
-<!-- ===== الصفحة الرئيسية ===== -->
 <div class="home-page">
   <div class="home-logo">UNO</div>
   <div class="home-subtitle">🃏 العبة الكلاسيكية بالعربي</div>
@@ -1366,7 +1373,6 @@ select.input-field { cursor: pointer; }
 </div>
 
 {% elif page == 'game' %}
-<!-- ===== صفحة اللعبة ===== -->
 <div class="game-page">
   <div class="game-header">
     <div class="room-code">الغرفة: <span id="roomCodeDisplay">{{ room_code }}</span></div>
@@ -1375,12 +1381,9 @@ select.input-field { cursor: pointer; }
   </div>
 
   <div class="game-body">
-    <!-- اللعبة الرئيسية -->
     <div class="game-main">
-      <!-- شريط اللاعبين -->
       <div class="players-strip" id="playersStrip"></div>
 
-      <!-- منطقة اللعب -->
       <div class="play-area" id="playArea">
         <div id="waitingRoom" class="waiting-room">
           <div class="waiting-code">
@@ -1396,15 +1399,14 @@ select.input-field { cursor: pointer; }
         <div id="gameTable" style="display:none;width:100%;flex-direction:column;align-items:center;gap:16px">
           <div id="myTurnBanner" style="display:none" class="my-turn-banner">🎯 دورك الآن! العب أو اسحب</div>
           <div class="table-center">
-            <div class="deck-pile" id="deckPile" onclick="drawCard()" title="اسحب ورقة" data-count="52 ورقة">🂠</div>
-            <div id="topCard" class="top-card"></div>
+            <div class="deck-pile" id="deckPile" onclick="drawCard()" title="اسحب ورقة" data-count="52 ورقة"><div class="deck-oval">UNO</div></div>
+            <div id="topCard"></div>
             <div id="colorIndicator" class="color-indicator"></div>
           </div>
           <div id="actionInfo" class="action-info">ابدأ اللعبة</div>
         </div>
       </div>
 
-      <!-- يد اللاعب -->
       <div class="my-hand-section" id="myHandSection" style="display:none">
         <div class="hand-header">
           <span class="hand-title" id="handTitle">أوراقك</span>
@@ -1416,7 +1418,6 @@ select.input-field { cursor: pointer; }
       </div>
     </div>
 
-    <!-- السيدبار -->
     <div class="sidebar" id="sidebar">
       <button class="sidebar-close" onclick="toggleSidebar()">✕</button>
       <div class="sidebar-tabs">
@@ -1424,7 +1425,6 @@ select.input-field { cursor: pointer; }
         <button class="sidebar-tab" onclick="switchTab('players')">👥 لاعبون</button>
       </div>
 
-      <!-- تاب الشات -->
       <div class="tab-content active" id="tab-chat">
         <div class="chat-messages" id="chatMessages"></div>
         <div class="voice-bar">
@@ -1440,7 +1440,6 @@ select.input-field { cursor: pointer; }
         </div>
       </div>
 
-      <!-- تاب اللاعبين -->
       <div class="tab-content" id="tab-players">
         <div class="players-list" id="playersList"></div>
         <div style="padding:12px;border-top:1px solid var(--border)">
@@ -1452,9 +1451,9 @@ select.input-field { cursor: pointer; }
   </div>
 
   <button class="mobile-chat-btn" onclick="toggleSidebar()">💬</button>
+  <div id="audioElements" style="display:none;"></div>
 </div>
 
-<!-- مودال اختيار اللون -->
 <div class="modal-overlay" id="colorModal" style="display:none">
   <div class="modal">
     <h3>🎨 اختر لوناً</h3>
@@ -1467,7 +1466,6 @@ select.input-field { cursor: pointer; }
   </div>
 </div>
 
-<!-- الفائز -->
 <div class="winner-overlay" id="winnerOverlay" style="display:none">
   <div class="winner-card">
     <div class="winner-emoji">🏆</div>
@@ -1579,38 +1577,36 @@ function renderGame(state) {
   const isMyTurn = myIdx === state.current_player_idx;
   const myPlayer = myIdx !== null ? state.players[myIdx] : null;
 
-  // بانر الدور
   const banner = document.getElementById('myTurnBanner');
   banner.style.display = isMyTurn && state.state === 'playing' ? 'block' : 'none';
 
-  // الورقة العليا
   const tc = state.top_card;
   const topEl = document.getElementById('topCard');
+  const valMap = {skip:'⊘',reverse:'⇄',draw2:'+2',wild:'🌈',wild4:'🌈+4', '0':'0','1':'1','2':'2','3':'3','4':'4','5':'5','6':'6','7':'7','8':'8','9':'9'};
+  
   if (tc) {
-    const valMap = {skip:'⊘',reverse:'⇄',draw2:'+2',wild:'🌈',wild4:'🌈+4',
-      '0':'0','1':'1','2':'2','3':'3','4':'4','5':'5','6':'6','7':'7','8':'8','9':'9'};
+    let tVal = valMap[tc.value]||tc.value;
     topEl.className = `top-card c-${tc.color === 'wild' ? 'wild' : tc.color}`;
-    topEl.innerHTML = `<div class="card-value">${valMap[tc.value]||tc.value}</div>
-      <div class="card-label">${cardLabelAr(tc)}</div>
-      ${state.draw_stack > 0 ? `<div class="draw-stack-badge">+${state.draw_stack}</div>` : ''}`;
+    topEl.innerHTML = `
+      <div class="corner-val corner-tl">${tVal}</div>
+      <div class="uno-oval"><div class="uno-val-center">${tVal}</div></div>
+      <div class="corner-val corner-br">${tVal}</div>
+      ${state.draw_stack > 0 ? `<div class="draw-stack-badge">+${state.draw_stack}</div>` : ''}
+    `;
   }
 
-  // مؤشر اللون
   const ci = document.getElementById('colorIndicator');
   ci.className = `color-indicator ci-${state.current_color||'wild'}`;
   const colorMap = {red:'var(--red)',green:'var(--green)',blue:'var(--blue)',yellow:'var(--yellow)',wild:'var(--wild)'};
   ci.style.boxShadow = `0 0 20px ${colorMap[state.current_color]||'gray'}`;
 
-  // ورق الحزمة
   const dp = document.getElementById('deckPile');
   dp.dataset.count = state.deck_count + ' ورقة';
   dp.style.cursor = isMyTurn ? 'pointer' : 'default';
   dp.onclick = isMyTurn ? drawCard : null;
 
-  // معلومات الآخر فعل
   document.getElementById('actionInfo').textContent = state.last_action || '';
 
-  // شريط اللاعبين
   const strip = document.getElementById('playersStrip');
   strip.innerHTML = state.players.map((p, i) => {
     const colors = ['#ff4757','#2ed573','#1e90ff','#ffd700','#a855f7','#ff7f50','#20b2aa','#ff69b4'];
@@ -1625,7 +1621,6 @@ function renderGame(state) {
     </div>`;
   }).join('');
 
-  // اليد
   const hand = myPlayer ? myPlayer.hand : null;
   const handTitle = document.getElementById('handTitle');
   if (!hand) {
@@ -1635,17 +1630,16 @@ function renderGame(state) {
   handTitle.textContent = `أوراقك (${hand.length})`;
 
   const cards = document.getElementById('myHandCards');
-  const topCard = state.top_card;
-  const valMap = {skip:'⊘',reverse:'⇄',draw2:'+2',wild:'🌈',wild4:'🌈+4',
-    '0':'0','1':'1','2':'2','3':'3','4':'4','5':'5','6':'6','7':'7','8':'8','9':'9'};
-
+  
   cards.innerHTML = hand.map(c => {
-    const canPlay = isMyTurn && state.state === 'playing' && cardPlayable(c, topCard, state.current_color, state.draw_stack);
+    const canPlay = isMyTurn && state.state === 'playing' && cardPlayable(c, tc, state.current_color, state.draw_stack);
+    let val = valMap[c.value]||c.value;
     return `<div class="hand-card c-${c.color === 'wild' ? 'wild' : c.color} ${canPlay ? 'playable' : 'not-playable'}"
       onclick="${canPlay ? `playCard('${c.id}')` : `showToast('لا يمكن لعب هذه الورقة الآن')`}"
       title="${cardLabelAr(c)}">
-      <div class="card-val">${valMap[c.value]||c.value}</div>
-      <div class="card-lbl">${cardLabelAr(c)}</div>
+      <div class="corner-val corner-tl">${val}</div>
+      <div class="uno-oval"><div class="uno-val-center">${val}</div></div>
+      <div class="corner-val corner-br">${val}</div>
     </div>`;
   }).join('');
 }
@@ -1663,7 +1657,6 @@ function renderPlayers(state) {
     if (p.uno) badge += '<span class="p-badge" style="background:rgba(255,71,87,0.3);color:var(--red)">UNO!</span>';
     if (!p.connected) badge += '<span class="p-badge" style="background:rgba(100,100,100,0.2);color:var(--text2)">📴</span>';
 
-    // زر مسك UNO
     let catchBtn = '';
     if (state.state === 'playing' && p.name !== PLAYER_NAME && p.hand_count === 1 && !p.uno) {
       catchBtn = `<button onclick="catchUno('${p.name}')" style="background:var(--accent);border:none;color:white;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-family:Tajawal">مسكته!</button>`;
@@ -1680,7 +1673,6 @@ function renderPlayers(state) {
     </div>`;
   }).join('');
 
-  // زر إعادة اللعبة
   const rb = document.getElementById('restartBtn');
   rb.style.display = isHost && (state.state === 'finished' || state.state === 'playing') ? 'block' : 'none';
   const wr = document.getElementById('winRestartBtn');
@@ -1777,7 +1769,6 @@ function appendChat(msg) {
     div.textContent = msg.message;
   }
   container.appendChild(div);
-  // حماية من إزعاج الشات - تمرير تلقائي خفيف
   const shouldScroll = container.scrollTop + container.clientHeight > container.scrollHeight - 60;
   if (shouldScroll) container.scrollTop = container.scrollHeight;
 }
@@ -1789,11 +1780,12 @@ function loadChat(chatArr) {
   container.scrollTop = container.scrollHeight;
 }
 
-// ===== المايك WebRTC =====
+// ===== المايك WebRTC الحقيقي =====
 let localStream = null;
 let micActive = false;
 let peerConnections = {};
 let voiceUsers = {};
+const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
 async function toggleMic() {
   const btn = document.getElementById('micBtn');
@@ -1805,11 +1797,11 @@ async function toggleMic() {
       btn.title = 'إيقاف المايك';
       voiceUsers[PLAYER_NAME] = { speaking: false, muted: false };
       updateVoiceBar();
-      socket.emit('voice_join', { code: ROOM_CODE, name: PLAYER_NAME });
+      socket.emit('voice_join_req', { code: ROOM_CODE, name: PLAYER_NAME });
       setupVoiceAnalyser();
-      showToast('🎤 المايك مفعّل');
+      showToast('🎤 المايك شغال وبث الصوت بدأ');
     } catch(e) {
-      showToast('❌ تعذر الوصول للمايك');
+      showToast('❌ تعذر الوصول للمايك أو الصلاحيات مرفوضة');
     }
   } else {
     if (localStream) localStream.getTracks().forEach(t => t.stop());
@@ -1819,9 +1811,65 @@ async function toggleMic() {
     btn.title = 'المايك';
     delete voiceUsers[PLAYER_NAME];
     updateVoiceBar();
+    
+    Object.values(peerConnections).forEach(pc => pc.close());
+    peerConnections = {};
+    document.getElementById('audioElements').innerHTML = '';
+    
     socket.emit('voice_leave', { code: ROOM_CODE, name: PLAYER_NAME });
-    showToast('🔇 المايك متوقف');
+    showToast('🔇 المايك مقفول');
   }
+}
+
+// WebRTC Signaling Logic
+socket && socket.on('voice_joined_alert', async (data) => {
+    if (micActive && data.sid !== socket.id) {
+        const pc = createPeerConnection(data.name, data.sid);
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit('webrtc_signal', { target_sid: data.sid, sender_sid: socket.id, sender_name: PLAYER_NAME, sdp: pc.localDescription, code: ROOM_CODE });
+    }
+});
+
+socket && socket.on('webrtc_signal', async (data) => {
+    if (data.target_sid !== socket.id) return;
+    let pc = peerConnections[data.sender_name];
+    if (!pc) pc = createPeerConnection(data.sender_name, data.sender_sid);
+    
+    if (data.sdp) {
+        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        if (data.sdp.type === 'offer') {
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('webrtc_signal', { target_sid: data.sender_sid, sender_sid: socket.id, sender_name: PLAYER_NAME, sdp: pc.localDescription, code: ROOM_CODE });
+        }
+    } else if (data.candidate) {
+        await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+    }
+});
+
+function createPeerConnection(remoteName, remoteSid) {
+    const pc = new RTCPeerConnection(rtcConfig);
+    peerConnections[remoteName] = pc;
+    if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+    
+    pc.onicecandidate = (e) => {
+        if (e.candidate) {
+            socket.emit('webrtc_signal', { target_sid: remoteSid, sender_sid: socket.id, sender_name: PLAYER_NAME, candidate: e.candidate, code: ROOM_CODE });
+        }
+    };
+    
+    pc.ontrack = (e) => {
+        let audio = document.getElementById('audio_' + remoteName);
+        if (!audio) {
+            audio = document.createElement('audio');
+            audio.id = 'audio_' + remoteName;
+            audio.autoplay = true;
+            document.getElementById('audioElements').appendChild(audio);
+        }
+        audio.srcObject = e.streams[0];
+    };
+    return pc;
 }
 
 function setupVoiceAnalyser() {
@@ -1859,8 +1907,8 @@ function updateVoiceBar() {
   }
   bar.innerHTML = names.map(n => {
     const u = voiceUsers[n];
-    return `<div class="voice-user ${u.speaking ? 'speaking' : ''}">
-      ${u.speaking ? '🔊' : '🎤'} ${n}
+    return `<div class="voice-user ${u && u.speaking ? 'speaking' : ''}">
+      ${u && u.speaking ? '🔊' : '🎤'} ${n}
     </div>`;
   }).join('');
 }
@@ -1907,7 +1955,6 @@ function showToast(msg) {
   clearTimeout(toastTimeout);
   toastTimeout = setTimeout(() => { t.style.opacity = '0'; }, 3000);
 }
-
 // بعد تحميل الشات الكامل
 const origRender = render;
 window.render = function(state) {
@@ -1918,16 +1965,11 @@ window.render = function(state) {
 connect();
 {% endif %}
 </script>
-{% endif %}
 </body>
 </html>
 """
 
-if __name__ == '__main__':
-    print("=" * 50)
-    print("🃏 لعبة UNO بالعربي")
-    print("=" * 50)
-    print("افتح المتصفح على: http://localhost:5000")
-    print("=" * 50)
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+application = app
 
+if __name__ == '__main__':
+    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
