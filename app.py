@@ -541,7 +541,6 @@ def on_restart(data):
 # ========== مسارات خاصة بالصوت WebRTC ==========
 @socketio.on('voice_join')
 def on_voice_join(data):
-    # إبلاغ باقي الغرفة بإنضمام شخص للصوت لفتح اتصال معه
     emit('voice_user_joined', {'sid': request.sid, 'name': data.get('name')}, room=data.get('code'), include_self=False)
 
 @socketio.on('voice_leave')
@@ -550,7 +549,6 @@ def on_voice_leave(data):
 
 @socketio.on('webrtc_signal')
 def on_webrtc_signal(data):
-    # تمرير إشارات WebRTC للشخص المطلوب بالتحديد
     target = data.get('target_sid')
     if target:
         emit('webrtc_signal', data, room=target)
@@ -567,7 +565,6 @@ def on_disconnect():
                 p['connected'] = False
                 add_chat(room, 'النظام', f'📴 {p["name"]} انقطع عن اللعبة', 'system')
                 socketio.emit('game_state', build_game_state(room), room=code)
-                # فصل المايك أيضاً عند الخروج
                 socketio.emit('voice_user_left', {'sid': request.sid}, room=code, include_self=False)
                 break
 
@@ -605,19 +602,22 @@ body {
   font-family: 'Tajawal', sans-serif;
   background: var(--bg);
   color: var(--text);
-  min-height: 100vh;
-  overflow-x: hidden;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ===== الصفحة الرئيسية ===== */
 .home-page {
-  min-height: 100vh;
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 20px;
   background: radial-gradient(ellipse at top, #1a0a2e 0%, #0a0a0f 60%);
+  overflow-y: auto;
 }
 .home-logo {
   font-size: clamp(48px, 10vw, 96px);
@@ -699,14 +699,16 @@ select.input-field { cursor: pointer; }
 .btn-secondary:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(255,165,2,0.4); }
 .btn:active { transform: translateY(0); }
 
-/* ===== صفحة اللعبة ===== */
+/* ===== هيكل صفحة اللعبة (Flexbox ثابت) ===== */
 .game-page {
-  display: grid;
-  grid-template-rows: auto 1fr auto;
+  display: flex;
+  flex-direction: column;
   height: 100vh;
+  width: 100vw;
   overflow: hidden;
 }
 .game-header {
+  flex-shrink: 0;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   padding: 10px 16px;
@@ -714,36 +716,28 @@ select.input-field { cursor: pointer; }
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  flex-wrap: wrap;
 }
-.room-code {
-  font-size: 13px;
-  color: var(--text2);
-}
-.room-code span {
-  color: var(--accent2);
-  font-weight: 700;
-  font-size: 16px;
-  letter-spacing: 2px;
-}
+.room-code { font-size: 13px; color: var(--text2); }
+.room-code span { color: var(--accent2); font-weight: 700; font-size: 16px; letter-spacing: 2px; }
+
 .game-body {
-  display: grid;
-  grid-template-columns: 1fr 280px;
+  flex: 1;
+  display: flex;
   overflow: hidden;
 }
-@media(max-width:768px){
-  .game-body { grid-template-columns: 1fr; }
-  .sidebar { display: none; }
-  .sidebar.show { display: flex; position: fixed; inset: 0; z-index: 100; }
-}
+
 .game-main {
+  flex: 1;
   display: flex;
   flex-direction: column;
+  padding: 10px;
+  gap: 10px;
   overflow: hidden;
-  padding: 12px;
-  gap: 12px;
 }
+
 .sidebar {
+  width: 300px;
+  flex-shrink: 0;
   background: var(--surface);
   border-right: 1px solid var(--border);
   display: flex;
@@ -751,13 +745,25 @@ select.input-field { cursor: pointer; }
   overflow: hidden;
 }
 
+@media(max-width:768px){
+  .sidebar { 
+    display: none; 
+    position: absolute; 
+    right: 0; top: 0; bottom: 0; 
+    z-index: 100; 
+    box-shadow: -5px 0 30px rgba(0,0,0,0.8);
+  }
+  .sidebar.show { display: flex; }
+}
+
 /* ===== لوحة اللاعبين ===== */
 .players-strip {
+  flex-shrink: 0;
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding-bottom: 4px;
-  scrollbar-width: thin;
+  padding-bottom: 5px;
+  scrollbar-width: none; /* إخفاء سكرول بار للجمال */
 }
 .player-chip {
   flex-shrink: 0;
@@ -769,59 +775,49 @@ select.input-field { cursor: pointer; }
   align-items: center;
   gap: 8px;
   transition: all 0.3s;
-  min-width: 0;
 }
 .player-chip.active {
   border-color: var(--accent2);
   background: rgba(255,165,2,0.1);
   box-shadow: 0 0 16px rgba(255,165,2,0.3);
 }
-.player-chip.me {
-  border-color: var(--blue);
-}
+.player-chip.me { border-color: var(--blue); }
 .player-chip.disconnected { opacity: 0.4; }
 .chip-avatar {
   width: 30px; height: 30px;
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 14px; font-weight: 700;
-  flex-shrink: 0;
 }
-.chip-info { min-width: 0; }
+.chip-info { display: flex; flex-direction: column; }
 .chip-name {
   font-size: 13px; font-weight: 700;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  max-width: 100px;
+  white-space: nowrap; max-width: 80px; overflow: hidden; text-overflow: ellipsis;
 }
 .chip-count { font-size: 11px; color: var(--text2); }
 .chip-uno {
-  background: var(--accent);
-  color: white;
-  font-size: 10px;
-  font-weight: 900;
-  padding: 2px 6px;
-  border-radius: 4px;
-  animation: uno-pulse 0.5s ease-in-out infinite alternate;
+  background: var(--accent); color: white; font-size: 10px; font-weight: 900;
+  padding: 2px 6px; border-radius: 4px; animation: uno-pulse 0.5s ease-in-out infinite alternate;
 }
-@keyframes uno-pulse {
-  from{transform:scale(1)}
-  to{transform:scale(1.1)}
-}
+@keyframes uno-pulse { from{transform:scale(1)} to{transform:scale(1.1)} }
 
-/* ===== منطقة اللعب ===== */
+/* ===== منطقة الساحة (الطاولة) ===== */
 .play-area {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  min-height: 0;
+  gap: 20px;
+  overflow: auto;
+  min-height: 200px;
 }
 .table-center {
   display: flex;
   align-items: center;
-  gap: 24px;
+  justify-content: center;
+  gap: 30px;
+  flex-wrap: wrap;
 }
 .color-indicator {
   width: 48px; height: 48px;
@@ -832,30 +828,27 @@ select.input-field { cursor: pointer; }
   transition: all 0.3s;
 }
 .deck-pile {
-  width: 70px; height: 100px;
+  width: 75px; height: 110px;
   background: linear-gradient(135deg, #1e3a5f, #2d5a8e);
   border-radius: 10px;
-  border: 2px solid white;
+  border: 3px solid white;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  font-size: 28px;
   transition: all 0.2s;
   position: relative;
   box-shadow: 4px 4px 0 #0a1f3f;
-  color: white;
-  font-weight: 900;
+  color: white; font-weight: 900;
 }
 .deck-pile .deck-oval {
-  width: 80%; height: 60%; background: #e74c3c; border-radius: 50%; display: flex; align-items: center; justify-content: center; transform: rotate(-25deg); border: 2px solid #f1c40f;
+  width: 80%; height: 60%; background: #e74c3c; border-radius: 50%; 
+  display: flex; align-items: center; justify-content: center; 
+  transform: rotate(-25deg); border: 2px solid #f1c40f;
+  font-size: 14px;
 }
 .deck-pile:hover { transform: scale(1.05); }
 .deck-pile::before {
   content: attr(data-count);
-  position: absolute;
-  bottom: -24px;
-  font-size: 11px;
-  color: var(--text2);
-  white-space: nowrap;
+  position: absolute; bottom: -24px; font-size: 12px; color: var(--text2); white-space: nowrap;
 }
 
 /* ======= كروت UNO الأصلية ======= */
@@ -865,23 +858,23 @@ select.input-field { cursor: pointer; }
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   position: relative;
-  transition: all 0.3s;
+  transition: transform 0.2s, box-shadow 0.2s;
   color: white;
   overflow: hidden;
   user-select: none;
 }
 .top-card {
-  width: 80px; height: 115px;
+  width: 85px; height: 125px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1);
   animation: card-played 0.3s ease-out;
 }
 .hand-card {
   flex-shrink: 0;
-  width: 70px; height: 105px;
+  width: 75px; height: 110px;
   cursor: pointer;
   box-shadow: 0 4px 10px rgba(0,0,0,0.3);
 }
-.hand-card:hover { transform: translateY(-15px); z-index: 10; }
+.hand-card:hover { transform: translateY(-20px); z-index: 10; }
 .hand-card.playable { border-color: #f1c40f; box-shadow: 0 0 16px rgba(241,196,15,0.8); }
 .hand-card.playable:hover { box-shadow: 0 8px 24px rgba(241,196,15,1); }
 .hand-card.not-playable { opacity: 0.5; cursor: not-allowed; }
@@ -926,65 +919,36 @@ select.input-field { cursor: pointer; }
 .c-wild { background: linear-gradient(135deg, #8e44ad, #e74c3c, #f1c40f, #2980b9); }
 
 /* ================================== */
-
 .action-info {
-  font-size: 13px;
-  color: var(--text2);
-  text-align: center;
-  padding: 8px 16px;
-  background: var(--surface2);
-  border-radius: 50px;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 14px; color: var(--text2); text-align: center;
+  padding: 8px 16px; background: var(--surface2); border-radius: 50px;
 }
 
-/* ===== اليد =====  */
+/* ===== قسم أوراقك (اليد) =====  */
 .my-hand-section {
+  flex-shrink: 0;
   background: var(--surface2);
   border-radius: 16px;
   padding: 12px;
-  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
 }
 .hand-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;
 }
-.hand-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text2);
-}
-.hand-actions {
-  display: flex;
-  gap: 8px;
-}
+.hand-title { font-size: 15px; font-weight: 700; color: var(--text2); }
 .hand-btn {
-  padding: 6px 14px;
-  border: none;
-  border-radius: 8px;
-  font-family: 'Tajawal', sans-serif;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s;
+  padding: 6px 14px; border: none; border-radius: 8px; font-family: 'Tajawal', sans-serif;
+  font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s;
 }
-.uno-btn {
-  background: var(--accent);
-  color: white;
-}
+.uno-btn { background: var(--accent); color: white; }
 .uno-btn:hover { background: #ff6b81; }
+
 .cards-scroll {
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding-bottom: 20px;
-  padding-top: 10px;
+  padding: 25px 5px 10px 5px; /* زيادة المساحة الفوقية عشان الكارت لما يترفع ميتغطاش */
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
@@ -995,365 +959,118 @@ select.input-field { cursor: pointer; }
 .ci-yellow { color: #ffd700; background: rgba(255,215,0,0.2); }
 
 /* ===== السيدبار =====  */
-.sidebar-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-}
+.sidebar-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .sidebar-tab {
-  flex: 1;
-  padding: 12px;
-  border: none;
-  background: none;
-  color: var(--text2);
-  font-family: 'Tajawal', sans-serif;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
+  flex: 1; padding: 12px; border: none; background: none; color: var(--text2);
+  font-family: 'Tajawal', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer;
   border-bottom: 2px solid transparent;
 }
-.sidebar-tab.active {
-  color: var(--accent2);
-  border-bottom-color: var(--accent2);
-}
+.sidebar-tab.active { color: var(--accent2); border-bottom-color: var(--accent2); }
 .tab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; }
 .tab-content.active { display: flex; }
 
 /* ===== الشات ===== */
 .chat-messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  scrollbar-width: thin;
+  flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px;
 }
-.chat-msg {
-  padding: 6px 10px;
-  border-radius: 10px;
-  font-size: 13px;
-  line-height: 1.4;
-  word-break: break-word;
-}
-.chat-msg.player-msg {
-  background: var(--surface2);
-  border-right: 3px solid var(--accent2);
-}
-.chat-msg.system-msg {
-  background: rgba(255,255,255,0.04);
-  color: var(--text2);
-  font-size: 12px;
-  text-align: center;
-  border-radius: 6px;
-}
-.msg-sender {
-  font-weight: 700;
-  font-size: 12px;
-  color: var(--accent2);
-  margin-bottom: 2px;
-}
-.msg-time {
-  font-size: 10px;
-  color: var(--text2);
-  margin-top: 2px;
-}
-.chat-input-area {
-  padding: 10px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  gap: 8px;
-}
+.chat-msg { padding: 8px 12px; border-radius: 10px; font-size: 13px; line-height: 1.4; word-break: break-word; }
+.chat-msg.player-msg { background: var(--surface2); border-right: 3px solid var(--accent2); }
+.chat-msg.system-msg { background: rgba(255,255,255,0.04); color: var(--text2); font-size: 12px; text-align: center; border-radius: 6px; }
+.msg-sender { font-weight: 700; font-size: 12px; color: var(--accent2); margin-bottom: 2px; }
+.msg-time { font-size: 10px; color: var(--text2); margin-top: 4px; }
+.chat-input-area { padding: 10px; border-top: 1px solid var(--border); display: flex; gap: 8px; flex-shrink: 0; }
 .chat-input {
-  flex: 1;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: var(--text);
-  font-family: 'Tajawal', sans-serif;
-  font-size: 14px;
-  text-align: right;
+  flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 12px; color: var(--text); font-family: 'Tajawal', sans-serif; font-size: 14px;
 }
 .chat-input:focus { outline: none; border-color: var(--accent2); }
 .send-btn {
-  background: var(--accent2);
-  border: none;
-  border-radius: 8px;
-  width: 38px;
-  cursor: pointer;
-  font-size: 18px;
-  color: white;
-  display: flex; align-items: center; justify-content: center;
+  background: var(--accent2); border: none; border-radius: 8px; width: 40px; cursor: pointer;
+  font-size: 18px; color: white; display: flex; align-items: center; justify-content: center;
 }
-.send-btn:hover { background: #ffb347; }
 
 /* ===== لوحة اللاعبين في السيدبار ===== */
-.players-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+.players-list { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .player-row {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  transition: all 0.2s;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px; display: flex; align-items: center; gap: 10px;
 }
-.player-row.active {
-  border-color: var(--accent2);
-  background: rgba(255,165,2,0.08);
-}
+.player-row.active { border-color: var(--accent2); background: rgba(255,165,2,0.08); }
 .player-row.me { border-color: var(--blue); }
-.p-avatar {
-  width: 36px; height: 36px;
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 16px;
-  flex-shrink: 0;
-}
+.p-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
 .p-info { flex: 1; min-width: 0; }
-.p-name {
-  font-weight: 700; font-size: 14px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
+.p-name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .p-cards { font-size: 12px; color: var(--text2); }
-.p-badge {
-  font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
+.p-badge { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: 700; }
 
 /* ===== الغرفة الانتظار ===== */
 .waiting-room {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  padding: 20px;
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
 }
-.waiting-code {
-  background: var(--surface2);
-  border: 2px dashed var(--accent2);
-  border-radius: 16px;
-  padding: 20px 32px;
-  text-align: center;
-}
-.waiting-code-label { font-size: 13px; color: var(--text2); margin-bottom: 8px; }
-.waiting-code-value {
-  font-size: 42px;
-  font-weight: 900;
-  letter-spacing: 8px;
-  color: var(--accent2);
-  font-variant-numeric: tabular-nums;
-}
-.waiting-players {
-  width: 100%;
-  max-width: 400px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+.waiting-code { background: var(--surface2); border: 2px dashed var(--accent2); border-radius: 16px; padding: 20px 32px; text-align: center; }
+.waiting-code-label { font-size: 14px; color: var(--text2); margin-bottom: 8px; }
+.waiting-code-value { font-size: 48px; font-weight: 900; letter-spacing: 10px; color: var(--accent2); }
 
 /* ===== المودال ===== */
 .modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.7);
-  backdrop-filter: blur(4px);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 200;
-  padding: 20px;
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center; z-index: 200; padding: 20px;
 }
-.modal {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 28px;
-  max-width: 360px;
-  width: 100%;
-  text-align: center;
-}
-.modal h3 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
-.color-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 12px;
-}
-.color-btn {
-  padding: 16px;
-  border: none;
-  border-radius: 12px;
-  font-family: 'Tajawal', sans-serif;
-  font-size: 16px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s;
-  color: white;
-}
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 28px; max-width: 360px; width: 100%; text-align: center; }
+.color-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+.color-btn { padding: 16px; border: none; border-radius: 12px; font-family: 'Tajawal', sans-serif; font-size: 18px; font-weight: 900; cursor: pointer; color: white; }
 .color-btn:hover { transform: scale(1.05); }
 .color-btn.red { background: var(--red); }
-.color-btn.green { background: var(--green); color: #001a00; }
+.color-btn.green { background: var(--green); color: #111; }
 .color-btn.blue { background: var(--blue); }
-.color-btn.yellow { background: var(--yellow); color: #1a1a00; }
+.color-btn.yellow { background: var(--yellow); color: #111; }
 
 /* ===== الفائز ===== */
-.winner-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.85);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 300;
-  padding: 20px;
-  animation: fade-in 0.5s ease;
-}
-@keyframes fade-in { from{opacity:0} to{opacity:1} }
 .winner-card {
-  background: linear-gradient(135deg, #1a1025, #0d1a2e);
-  border: 2px solid var(--accent2);
-  border-radius: 24px;
-  padding: 40px;
-  text-align: center;
-  max-width: 380px;
-  width: 100%;
-  box-shadow: 0 0 60px rgba(255,165,2,0.3);
-  animation: winner-pop 0.5s cubic-bezier(0.34,1.56,0.64,1);
+  background: linear-gradient(135deg, #1a1025, #0d1a2e); border: 2px solid var(--accent2);
+  border-radius: 24px; padding: 40px; text-align: center; box-shadow: 0 0 60px rgba(255,165,2,0.3);
 }
-@keyframes winner-pop {
-  from{transform:scale(0.5);opacity:0}
-  to{transform:scale(1);opacity:1}
-}
-.winner-emoji { font-size: 64px; line-height: 1; margin-bottom: 12px; }
-.winner-title { font-size: 28px; font-weight: 900; color: var(--accent2); }
-.winner-name { font-size: 22px; font-weight: 700; margin: 8px 0 20px; }
-.winner-btns { display: flex; gap: 12px; }
+.winner-emoji { font-size: 70px; margin-bottom: 12px; }
+.winner-title { font-size: 32px; font-weight: 900; color: var(--accent2); }
 
 /* ===== المايك ===== */
 .voice-bar {
-  background: var(--surface2);
-  border-top: 1px solid var(--border);
-  padding: 10px 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  background: var(--surface2); border-top: 1px solid var(--border); padding: 10px; display: flex; align-items: center; gap: 10px; flex-shrink: 0;
 }
 .mic-btn {
-  width: 40px; height: 40px;
-  border-radius: 50%;
-  border: none;
-  cursor: pointer;
-  font-size: 18px;
-  display: flex; align-items: center; justify-content: center;
-  transition: all 0.2s;
-  background: var(--surface3);
-  color: var(--text2);
+  width: 45px; height: 45px; border-radius: 50%; border: none; cursor: pointer; font-size: 20px;
+  display: flex; align-items: center; justify-content: center; background: var(--surface3); color: var(--text2);
 }
-.mic-btn.active {
-  background: var(--accent);
-  color: white;
-  animation: mic-pulse 1s ease-in-out infinite;
-}
-@keyframes mic-pulse {
-  0%,100%{box-shadow:0 0 0 0 rgba(255,71,87,0.4)}
-  50%{box-shadow:0 0 0 10px rgba(255,71,87,0)}
-}
-.voice-users {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  flex: 1;
-}
-.voice-user {
-  font-size: 12px;
-  padding: 3px 10px;
-  border-radius: 50px;
-  background: var(--surface3);
-  display: flex; align-items: center; gap: 4px;
-}
-.voice-user.speaking {
-  background: rgba(46,213,115,0.2);
-  color: var(--green);
-}
-.voice-user.muted { opacity: 0.5; }
+.mic-btn.active { background: var(--accent); color: white; animation: mic-pulse 1s infinite alternate; }
+@keyframes mic-pulse { from{box-shadow: 0 0 5px var(--accent);} to{box-shadow: 0 0 15px var(--accent);} }
+.voice-users { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+.voice-user { font-size: 13px; padding: 4px 12px; border-radius: 50px; background: var(--surface3); display: flex; align-items: center; gap: 6px; }
+.voice-user.speaking { background: rgba(46,213,115,0.2); color: var(--green); font-weight: bold; }
 
 /* ===== موبايل ===== */
 .mobile-chat-btn {
-  display: none;
-  position: fixed;
-  bottom: 80px;
-  left: 16px;
-  width: 48px; height: 48px;
-  border-radius: 50%;
-  background: var(--accent2);
-  border: none;
-  color: white;
-  font-size: 22px;
-  cursor: pointer;
-  z-index: 50;
-  box-shadow: var(--shadow);
-  align-items: center; justify-content: center;
+  display: none; position: fixed; bottom: 20px; left: 20px; width: 55px; height: 55px;
+  border-radius: 50%; background: var(--accent2); border: none; color: white; font-size: 24px;
+  z-index: 50; box-shadow: var(--shadow);
 }
-@media(max-width:768px){ .mobile-chat-btn { display: flex; } }
+@media(max-width:768px){ .mobile-chat-btn { display: flex; align-items: center; justify-content: center; } }
 .sidebar-close {
-  display: none;
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  background: var(--accent);
-  border: none;
-  color: white;
-  font-size: 20px;
-  width: 36px; height: 36px;
-  border-radius: 50%;
-  cursor: pointer;
-  align-items: center; justify-content: center;
+  display: none; position: absolute; top: 10px; left: 10px; background: var(--accent); border: none;
+  color: white; font-size: 20px; width: 35px; height: 35px; border-radius: 50%;
 }
-@media(max-width:768px){
-  .sidebar { position: relative; }
-  .sidebar-close { display: flex; }
-}
-
-/* تمرير سلس */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+@media(max-width:768px){ .sidebar-close { display: flex; align-items: center; justify-content: center; } }
 
 /* نبض الدور */
 .my-turn-banner {
   background: linear-gradient(135deg, rgba(255,165,2,0.2), rgba(255,71,87,0.2));
-  border: 1px solid var(--accent2);
-  border-radius: 10px;
-  padding: 8px 16px;
-  text-align: center;
-  font-weight: 700;
-  color: var(--accent2);
-  font-size: 14px;
-  animation: my-turn-pulse 1s ease-in-out infinite;
+  border: 1px solid var(--accent2); border-radius: 10px; padding: 8px 16px;
+  text-align: center; font-weight: 700; color: var(--accent2); font-size: 15px;
+  animation: my-turn-pulse 1s ease-in-out infinite; width: 100%; max-width: 400px;
 }
-@keyframes my-turn-pulse {
-  0%,100%{opacity:1}50%{opacity:0.7}
-}
+@keyframes my-turn-pulse { 0%,100%{opacity:1}50%{opacity:0.6} }
 .draw-stack-badge {
-  position: absolute;
-  top: -8px; right: -8px;
-  background: var(--accent);
-  color: white;
-  font-size: 11px;
-  font-weight: 900;
-  padding: 2px 6px;
-  border-radius: 50px;
+  position: absolute; top: -10px; right: -10px; background: var(--accent); color: white;
+  font-size: 13px; font-weight: 900; padding: 4px 8px; border-radius: 50px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index: 5;
 }
 </style>
 </head>
@@ -1389,7 +1106,7 @@ select.input-field { cursor: pointer; }
       </form>
     </div>
   </div>
-  <div style="margin-top:24px;color:var(--text2);font-size:12px;text-align:center;line-height:1.8">
+  <div style="margin-top:24px;color:var(--text2);font-size:13px;text-align:center;line-height:1.8">
     🎴 كل لاعب يبدأ بـ7 أوراق · 🔄 الأوراق الخاصة تغير الدور · 🔴 قل UNO عند آخر ورقة
   </div>
 </div>
@@ -1398,8 +1115,8 @@ select.input-field { cursor: pointer; }
 <div class="game-page">
   <div class="game-header">
     <div class="room-code">الغرفة: <span id="roomCodeDisplay">{{ room_code }}</span></div>
-    <div id="gameStatusBadge" style="font-size:13px;color:var(--text2)">⏳ انتظار...</div>
-    <div id="directionIndicator" style="font-size:18px">▶</div>
+    <div id="gameStatusBadge" style="font-size:14px;color:var(--text2); font-weight: bold;">⏳ انتظار...</div>
+    <div id="directionIndicator" style="font-size:20px; color: var(--accent2);">▶</div>
   </div>
 
   <div class="game-body">
@@ -1413,13 +1130,13 @@ select.input-field { cursor: pointer; }
             <div class="waiting-code-value">{{ room_code }}</div>
           </div>
           <div id="waitingPlayers" class="waiting-players"></div>
-          <button class="btn btn-primary" id="startBtn" style="max-width:240px;display:none"
+          <button class="btn btn-primary" id="startBtn" style="max-width:240px;display:none; font-size: 18px;"
             onclick="startGame()">🎮 ابدأ اللعبة</button>
-          <div id="waitingHint" style="color:var(--text2);font-size:13px;text-align:center"></div>
+          <div id="waitingHint" style="color:var(--text2);font-size:14px;text-align:center"></div>
         </div>
 
-        <div id="gameTable" style="display:none;width:100%;flex-direction:column;align-items:center;gap:16px">
-          <div id="myTurnBanner" style="display:none" class="my-turn-banner">🎯 دورك الآن! العب أو اسحب</div>
+        <div id="gameTable" style="display:none;width:100%;flex-direction:column;align-items:center;gap:20px">
+          <div id="myTurnBanner" style="display:none" class="my-turn-banner">🎯 دورك الآن! العب ورقة أو اسحب من الساحة</div>
           <div class="table-center">
             <div class="deck-pile" id="deckPile" onclick="drawCard()" title="اسحب ورقة" data-count="52 ورقة"><div class="deck-oval">UNO</div></div>
             <div id="topCard"></div>
@@ -1443,20 +1160,20 @@ select.input-field { cursor: pointer; }
     <div class="sidebar" id="sidebar">
       <button class="sidebar-close" onclick="toggleSidebar()">✕</button>
       <div class="sidebar-tabs">
-        <button class="sidebar-tab active" onclick="switchTab('chat')">💬 شات</button>
-        <button class="sidebar-tab" onclick="switchTab('players')">👥 لاعبون</button>
+        <button class="sidebar-tab active" onclick="switchTab('chat')">💬 المحادثة</button>
+        <button class="sidebar-tab" onclick="switchTab('players')">👥 اللاعبون</button>
       </div>
 
       <div class="tab-content active" id="tab-chat">
         <div class="chat-messages" id="chatMessages"></div>
         <div class="voice-bar">
-          <button class="mic-btn" id="micBtn" onclick="toggleMic()" title="المايك">🎤</button>
+          <button class="mic-btn" id="micBtn" onclick="toggleMic()" title="تشغيل المايك">🎤</button>
           <div class="voice-users" id="voiceUsers">
-            <span style="font-size:12px;color:var(--text2)">الصوت التلقائي</span>
+            <span style="font-size:12px;color:var(--text2)">انقر للإنضمام للصوت</span>
           </div>
         </div>
         <div class="chat-input-area">
-          <input class="chat-input" id="chatInput" placeholder="اكتب رسالة..." maxlength="200"
+          <input class="chat-input" id="chatInput" placeholder="اكتب رسالتك هنا..." maxlength="200"
             onkeydown="if(event.key==='Enter')sendChat()">
           <button class="send-btn" onclick="sendChat()">➤</button>
         </div>
@@ -1464,9 +1181,8 @@ select.input-field { cursor: pointer; }
 
       <div class="tab-content" id="tab-players">
         <div class="players-list" id="playersList"></div>
-        <div style="padding:12px;border-top:1px solid var(--border)">
-          <button class="btn btn-secondary" id="restartBtn" style="display:none;font-size:14px;padding:10px"
-            onclick="restartGame()">🔄 إعادة اللعبة</button>
+        <div style="padding:15px;border-top:1px solid var(--border)">
+          <button class="btn btn-secondary" id="restartBtn" style="display:none;" onclick="restartGame()">🔄 إعادة اللعبة من جديد</button>
         </div>
       </div>
     </div>
@@ -1479,7 +1195,7 @@ select.input-field { cursor: pointer; }
 
 <div class="modal-overlay" id="colorModal" style="display:none">
   <div class="modal">
-    <h3>🎨 اختر لوناً</h3>
+    <h3>🎨 اختر اللون الجديد</h3>
     <div class="color-grid">
       <button class="color-btn red" onclick="chooseColor('red')">🔴 أحمر</button>
       <button class="color-btn green" onclick="chooseColor('green')">🟢 أخضر</button>
@@ -1492,11 +1208,11 @@ select.input-field { cursor: pointer; }
 <div class="winner-overlay" id="winnerOverlay" style="display:none">
   <div class="winner-card">
     <div class="winner-emoji">🏆</div>
-    <div class="winner-title">فائز!</div>
-    <div class="winner-name" id="winnerName"></div>
+    <div class="winner-title">لدينا فائز!</div>
+    <div class="winner-name" id="winnerName" style="font-size: 24px; font-weight: bold; margin: 15px 0;"></div>
     <div class="winner-btns">
-      <button class="btn btn-primary" id="winRestartBtn" style="display:none" onclick="restartGame()">🔄 إعادة</button>
-      <button class="btn btn-secondary" onclick="window.location='/'">🏠 الرئيسية</button>
+      <button class="btn btn-primary" id="winRestartBtn" style="display:none" onclick="restartGame()">🔄 لعب دور جديد</button>
+      <button class="btn btn-secondary" onclick="window.location='/'">🏠 الخروج للرئيسية</button>
     </div>
   </div>
 </div>
@@ -1517,7 +1233,7 @@ function connect() {
     socket.emit('join_game', { code: ROOM_CODE, name: PLAYER_NAME });
   });
   socket.on('joined', (data) => {
-    if (!data.success) alert(data.msg || 'خطأ في الانضمام');
+    if (!data.success) alert(data.msg || 'حدث خطأ في الانضمام');
   });
   socket.on('game_state', (state) => {
     gameState = state;
@@ -1533,6 +1249,7 @@ function connect() {
     showToast('⚠️ ' + data.msg);
   });
   socket.on('disconnect', () => {
+    showToast('🔴 انقطع الاتصال بالسيرفر، جاري المحاولة...');
     setTimeout(connect, 2000);
   });
 }
@@ -1553,13 +1270,13 @@ function render(state) {
 function updateHeader(state) {
   const badge = document.getElementById('gameStatusBadge');
   const dir = document.getElementById('directionIndicator');
-  if (state.state === 'waiting') badge.textContent = `⏳ ${state.players.length}/${state.max_players} لاعبين`;
+  if (state.state === 'waiting') badge.textContent = `⏳ في الانتظار: ${state.players.length}/${state.max_players}`;
   else if (state.state === 'playing') {
     const cur = state.players[state.current_player_idx];
     badge.textContent = cur ? `🎯 دور: ${cur.name}` : '';
     badge.style.color = cur && cur.name === PLAYER_NAME ? 'var(--accent2)' : 'var(--text2)';
   } else if (state.state === 'finished') badge.textContent = '🏆 انتهت اللعبة';
-  dir.textContent = state.direction === 1 ? '▶' : '◀';
+  dir.textContent = state.direction === 1 ? '▶ اتجاه اللعب' : '◀ اتجاه عكسي';
 }
 
 function renderWaiting(state) {
@@ -1572,7 +1289,7 @@ function renderWaiting(state) {
       <div class="p-avatar" style="background:${avatarColor(p.name)};color:white">${p.name[0]}</div>
       <div class="p-info">
         <div class="p-name">${p.name} ${p.name === state.host ? '👑' : ''}</div>
-        <div class="p-cards">${p.name === PLAYER_NAME ? '(أنت)' : 'منضم'}</div>
+        <div class="p-cards">${p.name === PLAYER_NAME ? '(أنت)' : 'موجود بالغرفة'}</div>
       </div>
     </div>`).join('');
   const startBtn = document.getElementById('startBtn');
@@ -1580,21 +1297,21 @@ function renderWaiting(state) {
   if (isHost) {
     if (state.players.length >= 2) {
       startBtn.style.display = 'block';
-      hint.textContent = `يمكنك البدء بـ${state.players.length} لاعبين (الحد الأقصى: ${state.max_players})`;
+      hint.textContent = `جاهزون للبدء! (العدد: ${state.players.length} من أصل ${state.max_players})`;
     } else {
       startBtn.style.display = 'none';
-      hint.textContent = 'في انتظار لاعب آخر على الأقل...';
+      hint.textContent = 'في انتظار انضمام أصدقائك للغرفة...';
     }
   } else {
     startBtn.style.display = 'none';
-    hint.textContent = `في انتظار ${state.host} ليبدأ اللعبة...`;
+    hint.textContent = `في انتظار قيام الهوست (${state.host}) ببدء اللعبة...`;
   }
 }
 
 function renderGame(state) {
   document.getElementById('waitingRoom').style.display = 'none';
   document.getElementById('gameTable').style.display = 'flex';
-  document.getElementById('myHandSection').style.display = 'block';
+  document.getElementById('myHandSection').style.display = 'flex';
 
   const myIdx = state.viewer_idx;
   const isMyTurn = myIdx === state.current_player_idx;
@@ -1621,10 +1338,10 @@ function renderGame(state) {
   const ci = document.getElementById('colorIndicator');
   ci.className = `color-indicator ci-${state.current_color||'wild'}`;
   const colorMap = {red:'var(--red)',green:'var(--green)',blue:'var(--blue)',yellow:'var(--yellow)',wild:'var(--wild)'};
-  ci.style.boxShadow = `0 0 20px ${colorMap[state.current_color]||'gray'}`;
+  ci.style.boxShadow = `0 0 25px ${colorMap[state.current_color]||'gray'}`;
 
   const dp = document.getElementById('deckPile');
-  dp.dataset.count = state.deck_count + ' ورقة';
+  dp.dataset.count = state.deck_count + ' ورقة بالكومة';
   dp.style.cursor = isMyTurn ? 'pointer' : 'default';
   dp.onclick = isMyTurn ? drawCard : null;
 
@@ -1638,7 +1355,7 @@ function renderGame(state) {
       <div class="chip-avatar" style="background:${col};color:${i===3?'#1a1a00':'white'}">${p.name[0]}</div>
       <div class="chip-info">
         <div class="chip-name">${p.name}</div>
-        <div class="chip-count">${p.hand_count} ورقة</div>
+        <div class="chip-count">${p.hand_count} كروت</div>
       </div>
       ${p.uno ? '<span class="chip-uno">UNO!</span>' : ''}
     </div>`;
@@ -1647,10 +1364,10 @@ function renderGame(state) {
   const hand = myPlayer ? myPlayer.hand : null;
   const handTitle = document.getElementById('handTitle');
   if (!hand) {
-    document.getElementById('myHandCards').innerHTML = '<div style="color:var(--text2);font-size:13px">لا يمكن رؤية أوراقك</div>';
+    document.getElementById('myHandCards').innerHTML = '<div style="color:var(--text2);font-size:13px; margin: auto;">لا يمكن رؤية أوراقك لسبب غير معروف</div>';
     return;
   }
-  handTitle.textContent = `أوراقك (${hand.length})`;
+  handTitle.textContent = `أوراقك الخاصة (${hand.length})`;
 
   const cards = document.getElementById('myHandCards');
   
@@ -1658,7 +1375,7 @@ function renderGame(state) {
     const canPlay = isMyTurn && state.state === 'playing' && cardPlayable(c, tc, state.current_color, state.draw_stack);
     let val = valMap[c.value]||c.value;
     return `<div class="hand-card c-${c.color === 'wild' ? 'wild' : c.color} ${canPlay ? 'playable' : 'not-playable'}"
-      onclick="${canPlay ? `playCard('${c.id}')` : `showToast('لا يمكن لعب هذه الورقة الآن')`}"
+      onclick="${canPlay ? `playCard('${c.id}')` : `showToast('هذه الورقة لا تطابق الورقة في الساحة!')`}"
       title="${cardLabelAr(c)}">
       <div class="corner-val corner-tl">${val}</div>
       <div class="uno-oval"><div class="uno-val-center">${val}</div></div>
@@ -1675,22 +1392,22 @@ function renderPlayers(state) {
     const isActive = i === state.current_player_idx;
     const isMe = p.name === PLAYER_NAME;
     let badge = '';
-    if (p.name === state.host) badge = '<span class="p-badge" style="background:rgba(255,165,2,0.2);color:var(--accent2)">👑 هوست</span>';
+    if (p.name === state.host) badge = '<span class="p-badge" style="background:rgba(255,165,2,0.2);color:var(--accent2)">👑 الهوست</span>';
     if (isMe) badge += '<span class="p-badge" style="background:rgba(30,144,255,0.2);color:var(--blue)">أنت</span>';
     if (p.uno) badge += '<span class="p-badge" style="background:rgba(255,71,87,0.3);color:var(--red)">UNO!</span>';
-    if (!p.connected) badge += '<span class="p-badge" style="background:rgba(100,100,100,0.2);color:var(--text2)">📴</span>';
+    if (!p.connected) badge += '<span class="p-badge" style="background:rgba(100,100,100,0.2);color:var(--text2)">📴 غير متصل</span>';
 
     let catchBtn = '';
     if (state.state === 'playing' && p.name !== PLAYER_NAME && p.hand_count === 1 && !p.uno) {
-      catchBtn = `<button onclick="catchUno('${p.name}')" style="background:var(--accent);border:none;color:white;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-family:Tajawal">مسكته!</button>`;
+      catchBtn = `<button onclick="catchUno('${p.name}')" style="background:var(--accent);border:none;color:white;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:Tajawal; font-weight: bold;">صيده بدون UNO!</button>`;
     }
     return `<div class="player-row ${isActive ? 'active' : ''} ${isMe ? 'me' : ''}">
       <div class="p-avatar" style="background:${col};color:${i===3?'#1a1a00':'white'}">${p.name[0]}</div>
       <div class="p-info">
         <div class="p-name">${p.name}</div>
-        <div class="p-cards">${p.hand_count} ورقة</div>
+        <div class="p-cards">${p.hand_count} كروت متبقية</div>
       </div>
-      <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+      <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
         ${badge}${catchBtn}
       </div>
     </div>`;
@@ -1722,8 +1439,8 @@ function cardPlayable(card, topCard, currentColor, drawStack) {
 }
 
 function cardLabelAr(c) {
-  const valMap = {skip:'تخطي',reverse:'عكس',draw2:'+2',wild:'ملوّن',wild4:'ملوّن +4'};
-  const colMap = {red:'أحمر',green:'أخضر',blue:'أزرق',yellow:'أصفر',wild:'ملوّن'};
+  const valMap = {skip:'تخطي',reverse:'عكس',draw2:'سحب 2',wild:'ملوّن',wild4:'سحب 4 ملوّن'};
+  const colMap = {red:'أحمر',green:'أخضر',blue:'أزرق',yellow:'أصفر',wild:'مميز'};
   return (colMap[c.color]||c.color) + ' ' + (valMap[c.value]||c.value);
 }
 
@@ -1803,13 +1520,14 @@ function loadChat(chatArr) {
   container.scrollTop = container.scrollHeight;
 }
 
-// ==========================================
-// ====== المايك والصوت الحقيقي WebRTC ======
-// ==========================================
+// =========================================================
+// ====== نظام الصوت الحقيقي (WebRTC Mesh Network) ======
+// =========================================================
 let localStream = null;
 let micActive = false;
 let peerConnections = {}; 
 let voiceUsers = {}; 
+// سيرفرات جوجل المجانية للاتصال المباشر بين اللاعبين
 const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
 async function toggleMic() {
@@ -1817,32 +1535,35 @@ async function toggleMic() {
   
   if (!micActive) {
     try {
+      // طلب الإذن وفتح المايك
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       micActive = true;
       btn.classList.add('active');
-      btn.title = 'إيقاف المايك';
+      btn.title = 'إغلاق المايك';
       
       voiceUsers[socket.id] = { name: PLAYER_NAME, speaking: false };
       updateVoiceBar();
       
+      // إخبار الجميع بإنضمامي لشبكة الصوت
       socket.emit('voice_join', { code: ROOM_CODE, name: PLAYER_NAME, sid: socket.id });
       setupVoiceAnalyser();
-      showToast('🎤 المايك شغال وبث الصوت بدأ');
+      showToast('🎤 تم تفعيل المايك بنجاح');
     } catch(e) {
-      showToast('❌ تعذر الوصول للمايك أو الصلاحيات مرفوضة');
-      console.error(e);
+      showToast('❌ يجب السماح للمتصفح باستخدام الميكروفون!');
+      console.error('Mic Error:', e);
     }
   } else {
+    // إغلاق المايك
     if (localStream) localStream.getTracks().forEach(t => t.stop());
     localStream = null;
     micActive = false;
     btn.classList.remove('active');
-    btn.title = 'المايك';
+    btn.title = 'تشغيل المايك';
     
     delete voiceUsers[socket.id];
     updateVoiceBar();
     
-    // إغلاق كل الاتصالات الصوتية
+    // إغلاق جميع الاتصالات باللاعبين الآخرين
     Object.keys(peerConnections).forEach(sid => {
       peerConnections[sid].close();
       const audioEl = document.getElementById('audio_' + sid);
@@ -1851,18 +1572,18 @@ async function toggleMic() {
     peerConnections = {};
     
     socket.emit('voice_leave', { code: ROOM_CODE, sid: socket.id });
-    showToast('🔇 المايك مقفول');
+    showToast('🔇 تم إيقاف المايك');
   }
 }
 
-// استقبال إشعار بإنضمام شخص جديد للصوت
+// عندما ينضم شخص جديد لشبكة الصوت، نقوم بإنشاء اتصال معه ونرسل له (Offer)
 socket && socket.on('voice_user_joined', async (data) => {
+  // لا نهتم إن لم نكن في شبكة الصوت أساساً
   if (!micActive || data.sid === socket.id) return;
   
   voiceUsers[data.sid] = { name: data.name, speaking: false };
   updateVoiceBar();
   
-  // إنشاء اتصال جديد كبادئ (Offerer)
   const pc = createPeerConnection(data.sid, data.name);
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
@@ -1877,7 +1598,7 @@ socket && socket.on('voice_user_joined', async (data) => {
   });
 });
 
-// استقبال إشعار بخروج شخص من الصوت
+// شخص غادر شبكة الصوت
 socket && socket.on('voice_user_left', (data) => {
   if (peerConnections[data.sid]) {
     peerConnections[data.sid].close();
@@ -1891,13 +1612,14 @@ socket && socket.on('voice_user_left', (data) => {
   updateVoiceBar();
 });
 
-// تبادل الإشارات الصوتية (Signaling)
+// تبادل الإشارات (Signaling) لربط الصوت
 socket && socket.on('webrtc_signal', async (data) => {
-  if (data.target_sid !== socket.id) return;
+  if (data.target_sid !== socket.id || !micActive) return;
   
   let pc = peerConnections[data.sender_sid];
   
   if (data.type === 'offer') {
+    // وصلنا عرض من شخص، ننشئ اتصال ونرد عليه بـ (Answer)
     if (!pc) {
        voiceUsers[data.sender_sid] = { name: data.sender_name, speaking: false };
        updateVoiceBar();
@@ -1916,17 +1638,17 @@ socket && socket.on('webrtc_signal', async (data) => {
       code: ROOM_CODE
     });
   } else if (data.type === 'answer') {
-    if (pc) {
-      await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-    }
+    // وصلنا الرد من الشخص الجديد
+    if (pc) await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
   } else if (data.type === 'candidate') {
+    // إرسال معلومات الشبكة للربط المباشر
     if (pc && pc.remoteDescription) {
       try { await pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e){}
     }
   }
 });
 
-// دالة مساعدة لإنشاء اتصال نظير لـنظير
+// دالة أساسية لإنشاء قناة صوت بينك وبين أي لاعب
 function createPeerConnection(sid, name) {
   const pc = new RTCPeerConnection(rtcConfig);
   peerConnections[sid] = pc;
@@ -1956,15 +1678,23 @@ function createPeerConnection(sid, name) {
       document.getElementById('audioElements').appendChild(audio);
     }
     audio.srcObject = e.streams[0];
+    
+    // إجبار المتصفح على تشغيل الصوت
+    let playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(error => {
+        console.log('تشغيل الصوت يتطلب تفاعل المستخدم أولاً.', error);
+      });
+    }
   };
   
   return pc;
 }
 
-// تحليل موجات الصوت لتوضيح من يتحدث
+// لتحريك المايك بصرياً عند الكلام
 function setupVoiceAnalyser() {
   if (!localStream) return;
-  const ctx = new AudioContext();
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
   const src = ctx.createMediaStreamSource(localStream);
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 256;
@@ -1998,13 +1728,13 @@ function updateVoiceBar() {
   const bar = document.getElementById('voiceUsers');
   const sids = Object.keys(voiceUsers);
   if (sids.length === 0) {
-    bar.innerHTML = '<span style="font-size:12px;color:var(--text2)">لا يوجد أحد في المحادثة الصوتية</span>';
+    bar.innerHTML = '<span style="font-size:12px;color:var(--text2)">انقر على المايك للإنضمام للصوت</span>';
     return;
   }
   bar.innerHTML = sids.map(sid => {
     const u = voiceUsers[sid];
-    return `<div class="voice-user ${u.speaking ? 'speaking' : ''}">
-      ${u.speaking ? '🔊' : '🎤'} ${u.name}
+    return `<div class="voice-user ${u && u.speaking ? 'speaking' : ''}">
+      ${u && u.speaking ? '🔊' : '🎤'} ${u.name}
     </div>`;
   }).join('');
 }
@@ -2042,7 +1772,7 @@ function showToast(msg) {
     t.id = 'toast';
     t.style.cssText = `position:fixed;bottom:100px;left:50%;transform:translateX(-50%);
       background:var(--surface);border:1px solid var(--border);border-radius:50px;
-      padding:10px 20px;font-size:14px;z-index:999;transition:all 0.3s;
+      padding:10px 20px;font-size:15px; font-weight: bold; z-index:999;transition:all 0.3s;
       box-shadow:var(--shadow);white-space:nowrap;max-width:90vw;text-align:center`;
     document.body.appendChild(t);
   }
@@ -2051,6 +1781,7 @@ function showToast(msg) {
   clearTimeout(toastTimeout);
   toastTimeout = setTimeout(() => { t.style.opacity = '0'; }, 3000);
 }
+
 // بعد تحميل الشات الكامل
 const origRender = render;
 window.render = function(state) {
@@ -2065,10 +1796,8 @@ connect();
 </html>
 """
 
+# تجهيز المتغير application للاستضافات اللي بتطلبه
+application = app
+
 if __name__ == '__main__':
-    print("=" * 50)
-    print("🃏 لعبة UNO بالعربي")
-    print("=" * 50)
-    print("افتح المتصفح على: http://localhost:5000")
-    print("=" * 50)
     socketio.run(app, host='0.0.0.0', port=5000, debug=False)
