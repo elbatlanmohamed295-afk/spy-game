@@ -18,8 +18,8 @@ import time
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = 'uno-secret-key-2024'
-# إعدادات الـ eventlet ضرورية جداً لمنصة Render
+app.secret_key = 'uno-secret-key-2024-final-edition'
+# استخدام eventlet ضروري جداً لضمان سرعة اللعبة على Render
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # ========== منطق اللعبة ==========
@@ -108,9 +108,11 @@ def add_player(room, player_name, sid):
         'uno': False
     })
 
-def find_player(room, sid):
+def find_player(room, sid=None, name=None):
     for i, p in enumerate(room['players']):
-        if p['sid'] == sid:
+        if sid and p['sid'] == sid:
+            return i, p
+        if name and p['name'] == name:
             return i, p
     return None, None
 
@@ -180,7 +182,7 @@ def build_game_state(room, viewer_sid=None):
             'sid': p['sid']
         })
     top_card = room['discard'][-1] if room['discard'] else None
-    viewer_idx, _ = find_player(room, viewer_sid) if viewer_sid else (None, None)
+    viewer_idx, _ = find_player(room, sid=viewer_sid) if viewer_sid else (None, None)
     return {
         'state': room['state'],
         'players': players_info,
@@ -242,11 +244,15 @@ def join():
     room = get_room(code)
     if not room:
         return redirect('/?error=notfound')
-    if len(room['players']) >= room['max_players'] and room['state'] == 'waiting':
+    
+    # التحقق من أن الاسم غير مكرر إلا لو كان نفس اللاعب بيعمل Reconnect
+    idx, existing_player = find_player(room, name=name)
+    if idx is None and len(room['players']) >= room['max_players'] and room['state'] == 'waiting':
         return redirect('/?error=full')
+        
     session['name'] = name
     session['room'] = code
-    session['is_host'] = False
+    session['is_host'] = (room['host'] == name)
     return redirect(f'/room/{code}')
 
 @app.route('/room/<code>')
@@ -274,12 +280,8 @@ def on_join_game(data):
         emit('error', {'msg': 'الغرفة غير موجودة'})
         return
 
-    # تحقق إذا اللاعب موجود مسبقاً (إعادة اتصال)
-    existing_idx = None
-    for i, p in enumerate(room['players']):
-        if p['name'] == name:
-            existing_idx = i
-            break
+    # نظام الـ Reconnect المحسن
+    existing_idx, existing_player = find_player(room, name=name)
 
     if existing_idx is not None:
         room['players'][existing_idx]['sid'] = request.sid
@@ -338,7 +340,7 @@ def on_play_card(data):
     if not room or room['state'] != 'playing':
         return
 
-    idx, player = find_player(room, request.sid)
+    idx, player = find_player(room, sid=request.sid)
     if idx is None or idx != room['current_player_idx']:
         emit('error', {'msg': 'ليس دورك!'})
         return
@@ -458,7 +460,7 @@ def on_draw_card(data):
     if not room or room['state'] != 'playing':
         return
 
-    idx, player = find_player(room, request.sid)
+    idx, player = find_player(room, sid=request.sid)
     if idx is None or idx != room['current_player_idx']:
         emit('error', {'msg': 'ليس دورك!'})
         return
@@ -479,7 +481,7 @@ def on_call_uno(data):
     room = get_room(code)
     if not room:
         return
-    idx, player = find_player(room, request.sid)
+    idx, player = find_player(room, sid=request.sid)
     if idx is None:
         return
     if len(player['hand']) == 1:
@@ -495,7 +497,7 @@ def on_catch_uno(data):
     room = get_room(code)
     if not room:
         return
-    catcher_idx, catcher = find_player(room, request.sid)
+    catcher_idx, catcher = find_player(room, sid=request.sid)
     for i, p in enumerate(room['players']):
         if p['name'] == target_name and len(p['hand']) == 1 and not p.get('uno', False):
             drawn = draw_card(room, i, 2)
@@ -541,6 +543,7 @@ def on_restart(data):
 # ========== مسارات خاصة بالصوت WebRTC ==========
 @socketio.on('voice_join')
 def on_voice_join(data):
+    # إخبار الآخرين أن لاعباً انضم لشبكة الصوت لكي يقوموا بإرسال Offer له
     emit('voice_user_joined', {'sid': request.sid, 'name': data.get('name')}, room=data.get('code'), include_self=False)
 
 @socketio.on('voice_leave')
@@ -699,7 +702,7 @@ select.input-field { cursor: pointer; }
 .btn-secondary:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(255,165,2,0.4); }
 .btn:active { transform: translateY(0); }
 
-/* ===== هيكل صفحة اللعبة (Flexbox ثابت) ===== */
+/* ===== الواجهة الرئيسية وتنسيق الهيكل ===== */
 .game-page {
   display: flex;
   flex-direction: column;
@@ -724,6 +727,7 @@ select.input-field { cursor: pointer; }
   flex: 1;
   display: flex;
   overflow: hidden;
+  position: relative;
 }
 
 .game-main {
@@ -735,35 +739,37 @@ select.input-field { cursor: pointer; }
   overflow: hidden;
 }
 
+/* السيدبار الجانبي */
 .sidebar {
-  width: 300px;
+  width: 320px;
   flex-shrink: 0;
   background: var(--surface);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: transform 0.3s ease;
 }
 
 @media(max-width:768px){
   .sidebar { 
-    display: none; 
     position: absolute; 
     right: 0; top: 0; bottom: 0; 
+    transform: translateX(100%);
     z-index: 100; 
     box-shadow: -5px 0 30px rgba(0,0,0,0.8);
   }
-  .sidebar.show { display: flex; }
+  .sidebar.show { transform: translateX(0); }
 }
 
-/* ===== لوحة اللاعبين ===== */
+/* ===== لوحة اللاعبين العلوية ===== */
 .players-strip {
   flex-shrink: 0;
   display: flex;
   gap: 8px;
   overflow-x: auto;
   padding-bottom: 5px;
-  scrollbar-width: none; /* إخفاء سكرول بار للجمال */
+  scrollbar-width: none; 
 }
 .player-chip {
   flex-shrink: 0;
@@ -828,7 +834,7 @@ select.input-field { cursor: pointer; }
   transition: all 0.3s;
 }
 .deck-pile {
-  width: 75px; height: 110px;
+  width: 80px; height: 115px;
   background: linear-gradient(135deg, #1e3a5f, #2d5a8e);
   border-radius: 10px;
   border: 3px solid white;
@@ -840,10 +846,11 @@ select.input-field { cursor: pointer; }
   color: white; font-weight: 900;
 }
 .deck-pile .deck-oval {
-  width: 80%; height: 60%; background: #e74c3c; border-radius: 50%; 
+  width: 85%; height: 65%; background: #e74c3c; border-radius: 50%; 
   display: flex; align-items: center; justify-content: center; 
   transform: rotate(-25deg); border: 2px solid #f1c40f;
-  font-size: 14px;
+  font-size: 16px;
+  text-shadow: 1px 1px 0 #000;
 }
 .deck-pile:hover { transform: scale(1.05); }
 .deck-pile::before {
@@ -851,10 +858,10 @@ select.input-field { cursor: pointer; }
   position: absolute; bottom: -24px; font-size: 12px; color: var(--text2); white-space: nowrap;
 }
 
-/* ======= كروت UNO الأصلية ======= */
+/* ======= تصميم كروت UNO الأصلية (نسخة طبق الأصل) ======= */
 .top-card, .hand-card {
   border-radius: 8px;
-  border: 4px solid white;
+  border: 5px solid white;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   position: relative;
@@ -864,13 +871,13 @@ select.input-field { cursor: pointer; }
   user-select: none;
 }
 .top-card {
-  width: 85px; height: 125px;
+  width: 90px; height: 130px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1);
   animation: card-played 0.3s ease-out;
 }
 .hand-card {
   flex-shrink: 0;
-  width: 75px; height: 110px;
+  width: 80px; height: 115px;
   cursor: pointer;
   box-shadow: 0 4px 10px rgba(0,0,0,0.3);
 }
@@ -884,17 +891,17 @@ select.input-field { cursor: pointer; }
 .uno-oval {
   position: absolute;
   top: 50%; left: 50%;
-  transform: translate(-50%, -50%) rotate(-30deg);
+  transform: translate(-50%, -50%) rotate(-25deg);
   width: 85%; height: 65%;
   background: white;
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  box-shadow: inset 0 0 5px rgba(0,0,0,0.5);
+  box-shadow: inset 0 0 6px rgba(0,0,0,0.4);
   z-index: 1;
 }
 .uno-val-center {
-  font-size: 2.2em; font-weight: 900;
-  transform: rotate(30deg);
+  font-size: 2.5em; font-weight: 900;
+  transform: rotate(25deg);
   text-shadow: 2px 2px 0 #000;
   letter-spacing: -1px;
 }
@@ -905,7 +912,7 @@ select.input-field { cursor: pointer; }
 .c-wild .uno-val-center { color: #111; text-shadow: none; font-size: 1.5em; }
 
 .corner-val {
-  position: absolute; font-size: 1.1em; font-weight: 900;
+  position: absolute; font-size: 1.2em; font-weight: 900;
   text-shadow: 1px 1px 0 #000; z-index: 2;
 }
 .corner-tl { top: 2px; left: 4px; }
@@ -948,7 +955,7 @@ select.input-field { cursor: pointer; }
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding: 25px 5px 10px 5px; /* زيادة المساحة الفوقية عشان الكارت لما يترفع ميتغطاش */
+  padding: 25px 5px 10px 5px; 
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
@@ -1226,10 +1233,11 @@ let gameState = null;
 let pendingCard = null;
 let isHost = false;
 
-// ===== الاتصال =====
+// ===== الاتصال وإعادة الاتصال (Reconnect) =====
 function connect() {
   socket = io();
   socket.on('connect', () => {
+    // بمجرد الاتصال، نرسل طلب الانضمام. السيرفر سيتعرف على الاسم ويحدث الجلسة
     socket.emit('join_game', { code: ROOM_CODE, name: PLAYER_NAME });
   });
   socket.on('joined', (data) => {
@@ -1250,7 +1258,8 @@ function connect() {
   });
   socket.on('disconnect', () => {
     showToast('🔴 انقطع الاتصال بالسيرفر، جاري المحاولة...');
-    setTimeout(connect, 2000);
+    // إعادة محاولة الاتصال التلقائي
+    setTimeout(() => { if (!socket.connected) socket.connect(); }, 2000);
   });
 }
 
@@ -1364,7 +1373,7 @@ function renderGame(state) {
   const hand = myPlayer ? myPlayer.hand : null;
   const handTitle = document.getElementById('handTitle');
   if (!hand) {
-    document.getElementById('myHandCards').innerHTML = '<div style="color:var(--text2);font-size:13px; margin: auto;">لا يمكن رؤية أوراقك لسبب غير معروف</div>';
+    document.getElementById('myHandCards').innerHTML = '<div style="color:var(--text2);font-size:13px; margin: auto;">أنت متصل كزائر الآن</div>';
     return;
   }
   handTitle.textContent = `أوراقك الخاصة (${hand.length})`;
@@ -1521,21 +1530,30 @@ function loadChat(chatArr) {
 }
 
 // =========================================================
-// ====== نظام الصوت الحقيقي (WebRTC Mesh Network) ======
+// ====== نظام الصوت الحقيقي القوي (Mesh Network) ======
 // =========================================================
 let localStream = null;
 let micActive = false;
 let peerConnections = {}; 
 let voiceUsers = {}; 
-// سيرفرات جوجل المجانية للاتصال المباشر بين اللاعبين
-const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+// إضافة سيرفرات قوية لضمان الاتصال من شبكات مختلفة
+const rtcConfig = { 
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
+    ] 
+};
 
 async function toggleMic() {
   const btn = document.getElementById('micBtn');
   
   if (!micActive) {
     try {
-      // طلب الإذن وفتح المايك
+      // طلب الإذن للمايك فقط
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       micActive = true;
       btn.classList.add('active');
@@ -1544,16 +1562,16 @@ async function toggleMic() {
       voiceUsers[socket.id] = { name: PLAYER_NAME, speaking: false };
       updateVoiceBar();
       
-      // إخبار الجميع بإنضمامي لشبكة الصوت
+      // إخبار الجميع لإنشاء اتصالات
       socket.emit('voice_join', { code: ROOM_CODE, name: PLAYER_NAME, sid: socket.id });
       setupVoiceAnalyser();
-      showToast('🎤 تم تفعيل المايك بنجاح');
+      showToast('🎤 جاري ربطك صوتياً بباقي الغرفة...');
     } catch(e) {
-      showToast('❌ يجب السماح للمتصفح باستخدام الميكروفون!');
+      showToast('❌ المتصفح يمنع وصول المايك! تأكد من إعطاء الصلاحيات.');
       console.error('Mic Error:', e);
     }
   } else {
-    // إغلاق المايك
+    // إغلاق المايك بالكامل
     if (localStream) localStream.getTracks().forEach(t => t.stop());
     localStream = null;
     micActive = false;
@@ -1563,7 +1581,6 @@ async function toggleMic() {
     delete voiceUsers[socket.id];
     updateVoiceBar();
     
-    // إغلاق جميع الاتصالات باللاعبين الآخرين
     Object.keys(peerConnections).forEach(sid => {
       peerConnections[sid].close();
       const audioEl = document.getElementById('audio_' + sid);
@@ -1576,29 +1593,32 @@ async function toggleMic() {
   }
 }
 
-// عندما ينضم شخص جديد لشبكة الصوت، نقوم بإنشاء اتصال معه ونرسل له (Offer)
+// لما حد جديد يفتح المايك، إنت (الموجود مسبقاً) هتبعتله عرض اتصال Offer
 socket && socket.on('voice_user_joined', async (data) => {
-  // لا نهتم إن لم نكن في شبكة الصوت أساساً
   if (!micActive || data.sid === socket.id) return;
   
   voiceUsers[data.sid] = { name: data.name, speaking: false };
   updateVoiceBar();
   
-  const pc = createPeerConnection(data.sid, data.name);
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  
-  socket.emit('webrtc_signal', {
-    target_sid: data.sid,
-    sender_sid: socket.id,
-    sender_name: PLAYER_NAME,
-    type: 'offer',
-    sdp: pc.localDescription,
-    code: ROOM_CODE
-  });
+  try {
+      const pc = createPeerConnection(data.sid, data.name);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      
+      socket.emit('webrtc_signal', {
+        target_sid: data.sid,
+        sender_sid: socket.id,
+        sender_name: PLAYER_NAME,
+        type: 'offer',
+        sdp: pc.localDescription,
+        code: ROOM_CODE
+      });
+  } catch(e) {
+      console.error("خطأ في إنشاء اتصال مع", data.name, e);
+  }
 });
 
-// شخص غادر شبكة الصوت
+// لما حد يقفل المايك
 socket && socket.on('voice_user_left', (data) => {
   if (peerConnections[data.sid]) {
     peerConnections[data.sid].close();
@@ -1612,43 +1632,43 @@ socket && socket.on('voice_user_left', (data) => {
   updateVoiceBar();
 });
 
-// تبادل الإشارات (Signaling) لربط الصوت
+// استقبال العروض والردود (Signaling)
 socket && socket.on('webrtc_signal', async (data) => {
   if (data.target_sid !== socket.id || !micActive) return;
   
   let pc = peerConnections[data.sender_sid];
   
-  if (data.type === 'offer') {
-    // وصلنا عرض من شخص، ننشئ اتصال ونرد عليه بـ (Answer)
-    if (!pc) {
-       voiceUsers[data.sender_sid] = { name: data.sender_name, speaking: false };
-       updateVoiceBar();
-       pc = createPeerConnection(data.sender_sid, data.sender_name);
-    }
-    await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    
-    socket.emit('webrtc_signal', {
-      target_sid: data.sender_sid,
-      sender_sid: socket.id,
-      sender_name: PLAYER_NAME,
-      type: 'answer',
-      sdp: pc.localDescription,
-      code: ROOM_CODE
-    });
-  } else if (data.type === 'answer') {
-    // وصلنا الرد من الشخص الجديد
-    if (pc) await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-  } else if (data.type === 'candidate') {
-    // إرسال معلومات الشبكة للربط المباشر
-    if (pc && pc.remoteDescription) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e){}
-    }
+  try {
+      if (data.type === 'offer') {
+        if (!pc) {
+           voiceUsers[data.sender_sid] = { name: data.sender_name, speaking: false };
+           updateVoiceBar();
+           pc = createPeerConnection(data.sender_sid, data.sender_name);
+        }
+        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        
+        socket.emit('webrtc_signal', {
+          target_sid: data.sender_sid,
+          sender_sid: socket.id,
+          sender_name: PLAYER_NAME,
+          type: 'answer',
+          sdp: pc.localDescription,
+          code: ROOM_CODE
+        });
+      } else if (data.type === 'answer') {
+        if (pc) await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      } else if (data.type === 'candidate') {
+        if (pc && pc.remoteDescription) {
+          await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+        }
+      }
+  } catch(e) {
+      console.error("Signal Error:", e);
   }
 });
 
-// دالة أساسية لإنشاء قناة صوت بينك وبين أي لاعب
 function createPeerConnection(sid, name) {
   const pc = new RTCPeerConnection(rtcConfig);
   peerConnections[sid] = pc;
@@ -1675,15 +1695,18 @@ function createPeerConnection(sid, name) {
       audio = document.createElement('audio');
       audio.id = 'audio_' + sid;
       audio.autoplay = true;
+      audio.controls = false; // مخفي للمستخدم
       document.getElementById('audioElements').appendChild(audio);
     }
     audio.srcObject = e.streams[0];
     
-    // إجبار المتصفح على تشغيل الصوت
+    // إجبار تشغيل الصوت تفادياً لسياسات المتصفح
     let playPromise = audio.play();
     if (playPromise !== undefined) {
-      playPromise.catch(error => {
-        console.log('تشغيل الصوت يتطلب تفاعل المستخدم أولاً.', error);
+      playPromise.then(() => {
+          console.log("صوت " + name + " يعمل الآن");
+      }).catch(error => {
+        console.warn("سياسة المتصفح تمنع التشغيل التلقائي للصوت لـ", name);
       });
     }
   };
@@ -1691,7 +1714,7 @@ function createPeerConnection(sid, name) {
   return pc;
 }
 
-// لتحريك المايك بصرياً عند الكلام
+// التحدث بصرياً
 function setupVoiceAnalyser() {
   if (!localStream) return;
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1705,7 +1728,7 @@ function setupVoiceAnalyser() {
     if (!micActive) return;
     analyser.getByteFrequencyData(buf);
     const vol = buf.reduce((a,b)=>a+b,0)/buf.length;
-    const speaking = vol > 15;
+    const speaking = vol > 15; // حساسية المايك
     
     if (voiceUsers[socket.id] && voiceUsers[socket.id].speaking !== speaking) {
         voiceUsers[socket.id].speaking = speaking;
@@ -1728,7 +1751,7 @@ function updateVoiceBar() {
   const bar = document.getElementById('voiceUsers');
   const sids = Object.keys(voiceUsers);
   if (sids.length === 0) {
-    bar.innerHTML = '<span style="font-size:12px;color:var(--text2)">انقر على المايك للإنضمام للصوت</span>';
+    bar.innerHTML = '<span style="font-size:12px;color:var(--text2)">انقر على المايك للانضمام للصوت</span>';
     return;
   }
   bar.innerHTML = sids.map(sid => {
@@ -1796,8 +1819,11 @@ connect();
 </html>
 """
 
-# تجهيز المتغير application للاستضافات اللي بتطلبه
+# المتغير الخاص باستضافة Render
 application = app
 
 if __name__ == '__main__':
+    print("=" * 50)
+    print("🃏 لعبة UNO بالعربي - نسخة Render النهائية")
+    print("=" * 50)
     socketio.run(app, host='0.0.0.0', port=5000, debug=False)
