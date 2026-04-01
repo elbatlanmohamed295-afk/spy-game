@@ -19,6 +19,7 @@ from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = 'uno-secret-key-2024'
+# إعدادات الـ eventlet ضرورية جداً لمنصة Render
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # ========== منطق اللعبة ==========
@@ -273,6 +274,7 @@ def on_join_game(data):
         emit('error', {'msg': 'الغرفة غير موجودة'})
         return
 
+    # تحقق إذا اللاعب موجود مسبقاً (إعادة اتصال)
     existing_idx = None
     for i, p in enumerate(room['players']):
         if p['name'] == name:
@@ -341,6 +343,7 @@ def on_play_card(data):
         emit('error', {'msg': 'ليس دورك!'})
         return
 
+    # إيجاد الورقة
     card = None
     card_pos = None
     for i, c in enumerate(player['hand']):
@@ -354,25 +357,29 @@ def on_play_card(data):
 
     top_card = room['discard'][-1]
 
+    # تحقق اللعب مع draw_stack
     if room['draw_stack'] > 0:
         if card['value'] == 'draw2' and top_card['value'] == 'draw2':
-            pass
+            pass  # مسموح
         elif card['value'] == 'wild4' and top_card['value'] == 'wild4':
-            pass
+            pass  # مسموح
         else:
             emit('error', {'msg': f'يجب عليك سحب {room["draw_stack"]} ورقة أو اللعب بورقة مماثلة!'})
             return
 
+    # تحقق إمكانية اللعب
     if room['draw_stack'] == 0 and not card_playable(card, top_card, room['current_color']):
         emit('error', {'msg': 'لا يمكنك لعب هذه الورقة!'})
         return
 
+    # Wild color
     if card['color'] == 'wild' and not chosen_color:
         emit('choose_color', {})
         return
     if card['color'] == 'wild' and chosen_color:
         card['chosen_color'] = chosen_color
 
+    # العب الورقة
     player['hand'].pop(card_pos)
     room['discard'].append(card)
 
@@ -388,18 +395,21 @@ def on_play_card(data):
     room['last_action'] = f'{player["name"]} لعب {label}'
     add_chat(room, 'النظام', f'🃏 {player["name"]} لعب: {label}', 'system')
 
+    # تحقق الفوز
     if check_winner(room, idx):
         add_chat(room, 'النظام', f'🏆 {player["name"]} فاز باللعبة!', 'system')
         for p in room['players']:
             socketio.emit('game_state', build_game_state(room, p['sid']), room=p['sid'])
         return
 
+    # UNO
     if len(player['hand']) == 1:
         player['uno'] = True
         add_chat(room, 'النظام', f'🔴 {player["name"]} قال UNO!', 'system')
     else:
         player['uno'] = False
 
+    # تأثيرات الأوراق
     n = len(room['players'])
     if card['value'] == 'skip':
         next_player(room)
@@ -437,6 +447,7 @@ def on_play_card(data):
     else:
         next_player(room)
 
+    # إرسال الحالة
     for p in room['players']:
         socketio.emit('game_state', build_game_state(room, p['sid']), room=p['sid'])
 
@@ -527,17 +538,26 @@ def on_restart(data):
     for p in room['players']:
         socketio.emit('game_state', build_game_state(room, p['sid']), room=p['sid'])
 
-# مسارات خاصة بالصوت WebRTC
-@socketio.on('voice_join_req')
-def on_voice_join_req(data):
-    code = data.get('code')
-    emit('voice_joined_alert', {'sid': request.sid, 'name': data.get('name')}, room=code, include_self=False)
+# ========== مسارات خاصة بالصوت WebRTC ==========
+@socketio.on('voice_join')
+def on_voice_join(data):
+    # إبلاغ باقي الغرفة بإنضمام شخص للصوت لفتح اتصال معه
+    emit('voice_user_joined', {'sid': request.sid, 'name': data.get('name')}, room=data.get('code'), include_self=False)
+
+@socketio.on('voice_leave')
+def on_voice_leave(data):
+    emit('voice_user_left', {'sid': request.sid}, room=data.get('code'), include_self=False)
 
 @socketio.on('webrtc_signal')
 def on_webrtc_signal(data):
+    # تمرير إشارات WebRTC للشخص المطلوب بالتحديد
     target = data.get('target_sid')
     if target:
         emit('webrtc_signal', data, room=target)
+
+@socketio.on('voice_speaking')
+def on_voice_speaking(data):
+    emit('voice_speaking_update', {'sid': request.sid, 'speaking': data.get('speaking')}, room=data.get('code'), include_self=False)
 
 @socketio.on('disconnect')
 def on_disconnect():
@@ -547,6 +567,8 @@ def on_disconnect():
                 p['connected'] = False
                 add_chat(room, 'النظام', f'📴 {p["name"]} انقطع عن اللعبة', 'system')
                 socketio.emit('game_state', build_game_state(room), room=code)
+                # فصل المايك أيضاً عند الخروج
+                socketio.emit('voice_user_left', {'sid': request.sid}, room=code, include_self=False)
                 break
 
 # ========== HTML/CSS/JS ==========
@@ -1451,6 +1473,7 @@ select.input-field { cursor: pointer; }
   </div>
 
   <button class="mobile-chat-btn" onclick="toggleSidebar()">💬</button>
+  
   <div id="audioElements" style="display:none;"></div>
 </div>
 
@@ -1780,28 +1803,34 @@ function loadChat(chatArr) {
   container.scrollTop = container.scrollHeight;
 }
 
-// ===== المايك WebRTC الحقيقي =====
+// ==========================================
+// ====== المايك والصوت الحقيقي WebRTC ======
+// ==========================================
 let localStream = null;
 let micActive = false;
-let peerConnections = {};
-let voiceUsers = {};
+let peerConnections = {}; 
+let voiceUsers = {}; 
 const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
 async function toggleMic() {
   const btn = document.getElementById('micBtn');
+  
   if (!micActive) {
     try {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       micActive = true;
       btn.classList.add('active');
       btn.title = 'إيقاف المايك';
-      voiceUsers[PLAYER_NAME] = { speaking: false, muted: false };
+      
+      voiceUsers[socket.id] = { name: PLAYER_NAME, speaking: false };
       updateVoiceBar();
-      socket.emit('voice_join_req', { code: ROOM_CODE, name: PLAYER_NAME });
+      
+      socket.emit('voice_join', { code: ROOM_CODE, name: PLAYER_NAME, sid: socket.id });
       setupVoiceAnalyser();
       showToast('🎤 المايك شغال وبث الصوت بدأ');
     } catch(e) {
       showToast('❌ تعذر الوصول للمايك أو الصلاحيات مرفوضة');
+      console.error(e);
     }
   } else {
     if (localStream) localStream.getTracks().forEach(t => t.stop());
@@ -1809,69 +1838,130 @@ async function toggleMic() {
     micActive = false;
     btn.classList.remove('active');
     btn.title = 'المايك';
-    delete voiceUsers[PLAYER_NAME];
+    
+    delete voiceUsers[socket.id];
     updateVoiceBar();
     
-    Object.values(peerConnections).forEach(pc => pc.close());
+    // إغلاق كل الاتصالات الصوتية
+    Object.keys(peerConnections).forEach(sid => {
+      peerConnections[sid].close();
+      const audioEl = document.getElementById('audio_' + sid);
+      if (audioEl) audioEl.remove();
+    });
     peerConnections = {};
-    document.getElementById('audioElements').innerHTML = '';
     
-    socket.emit('voice_leave', { code: ROOM_CODE, name: PLAYER_NAME });
+    socket.emit('voice_leave', { code: ROOM_CODE, sid: socket.id });
     showToast('🔇 المايك مقفول');
   }
 }
 
-// WebRTC Signaling Logic
-socket && socket.on('voice_joined_alert', async (data) => {
-    if (micActive && data.sid !== socket.id) {
-        const pc = createPeerConnection(data.name, data.sid);
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        socket.emit('webrtc_signal', { target_sid: data.sid, sender_sid: socket.id, sender_name: PLAYER_NAME, sdp: pc.localDescription, code: ROOM_CODE });
-    }
+// استقبال إشعار بإنضمام شخص جديد للصوت
+socket && socket.on('voice_user_joined', async (data) => {
+  if (!micActive || data.sid === socket.id) return;
+  
+  voiceUsers[data.sid] = { name: data.name, speaking: false };
+  updateVoiceBar();
+  
+  // إنشاء اتصال جديد كبادئ (Offerer)
+  const pc = createPeerConnection(data.sid, data.name);
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  
+  socket.emit('webrtc_signal', {
+    target_sid: data.sid,
+    sender_sid: socket.id,
+    sender_name: PLAYER_NAME,
+    type: 'offer',
+    sdp: pc.localDescription,
+    code: ROOM_CODE
+  });
 });
 
+// استقبال إشعار بخروج شخص من الصوت
+socket && socket.on('voice_user_left', (data) => {
+  if (peerConnections[data.sid]) {
+    peerConnections[data.sid].close();
+    delete peerConnections[data.sid];
+  }
+  if (voiceUsers[data.sid]) {
+    delete voiceUsers[data.sid];
+  }
+  const audioEl = document.getElementById('audio_' + data.sid);
+  if (audioEl) audioEl.remove();
+  updateVoiceBar();
+});
+
+// تبادل الإشارات الصوتية (Signaling)
 socket && socket.on('webrtc_signal', async (data) => {
-    if (data.target_sid !== socket.id) return;
-    let pc = peerConnections[data.sender_name];
-    if (!pc) pc = createPeerConnection(data.sender_name, data.sender_sid);
-    
-    if (data.sdp) {
-        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-        if (data.sdp.type === 'offer') {
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            socket.emit('webrtc_signal', { target_sid: data.sender_sid, sender_sid: socket.id, sender_name: PLAYER_NAME, sdp: pc.localDescription, code: ROOM_CODE });
-        }
-    } else if (data.candidate) {
-        await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+  if (data.target_sid !== socket.id) return;
+  
+  let pc = peerConnections[data.sender_sid];
+  
+  if (data.type === 'offer') {
+    if (!pc) {
+       voiceUsers[data.sender_sid] = { name: data.sender_name, speaking: false };
+       updateVoiceBar();
+       pc = createPeerConnection(data.sender_sid, data.sender_name);
     }
+    await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    
+    socket.emit('webrtc_signal', {
+      target_sid: data.sender_sid,
+      sender_sid: socket.id,
+      sender_name: PLAYER_NAME,
+      type: 'answer',
+      sdp: pc.localDescription,
+      code: ROOM_CODE
+    });
+  } else if (data.type === 'answer') {
+    if (pc) {
+      await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+    }
+  } else if (data.type === 'candidate') {
+    if (pc && pc.remoteDescription) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e){}
+    }
+  }
 });
 
-function createPeerConnection(remoteName, remoteSid) {
-    const pc = new RTCPeerConnection(rtcConfig);
-    peerConnections[remoteName] = pc;
-    if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-    
-    pc.onicecandidate = (e) => {
-        if (e.candidate) {
-            socket.emit('webrtc_signal', { target_sid: remoteSid, sender_sid: socket.id, sender_name: PLAYER_NAME, candidate: e.candidate, code: ROOM_CODE });
-        }
-    };
-    
-    pc.ontrack = (e) => {
-        let audio = document.getElementById('audio_' + remoteName);
-        if (!audio) {
-            audio = document.createElement('audio');
-            audio.id = 'audio_' + remoteName;
-            audio.autoplay = true;
-            document.getElementById('audioElements').appendChild(audio);
-        }
-        audio.srcObject = e.streams[0];
-    };
-    return pc;
+// دالة مساعدة لإنشاء اتصال نظير لـنظير
+function createPeerConnection(sid, name) {
+  const pc = new RTCPeerConnection(rtcConfig);
+  peerConnections[sid] = pc;
+  
+  if (localStream) {
+    localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+  }
+  
+  pc.onicecandidate = (e) => {
+    if (e.candidate) {
+      socket.emit('webrtc_signal', {
+        target_sid: sid,
+        sender_sid: socket.id,
+        type: 'candidate',
+        candidate: e.candidate,
+        code: ROOM_CODE
+      });
+    }
+  };
+  
+  pc.ontrack = (e) => {
+    let audio = document.getElementById('audio_' + sid);
+    if (!audio) {
+      audio = document.createElement('audio');
+      audio.id = 'audio_' + sid;
+      audio.autoplay = true;
+      document.getElementById('audioElements').appendChild(audio);
+    }
+    audio.srcObject = e.streams[0];
+  };
+  
+  return pc;
 }
 
+// تحليل موجات الصوت لتوضيح من يتحدث
 function setupVoiceAnalyser() {
   if (!localStream) return;
   const ctx = new AudioContext();
@@ -1880,35 +1970,41 @@ function setupVoiceAnalyser() {
   analyser.fftSize = 256;
   src.connect(analyser);
   const buf = new Uint8Array(analyser.frequencyBinCount);
+  
   function check() {
     if (!micActive) return;
     analyser.getByteFrequencyData(buf);
     const vol = buf.reduce((a,b)=>a+b,0)/buf.length;
     const speaking = vol > 15;
-    if (voiceUsers[PLAYER_NAME]) voiceUsers[PLAYER_NAME].speaking = speaking;
-    updateVoiceBar();
-    socket.emit('voice_speaking', { code: ROOM_CODE, name: PLAYER_NAME, speaking });
+    
+    if (voiceUsers[socket.id] && voiceUsers[socket.id].speaking !== speaking) {
+        voiceUsers[socket.id].speaking = speaking;
+        updateVoiceBar();
+        socket.emit('voice_speaking', { code: ROOM_CODE, sid: socket.id, speaking: speaking });
+    }
     requestAnimationFrame(check);
   }
   check();
 }
 
-socket && socket.on('voice_update', (data) => {
-  voiceUsers = data.users || {};
-  updateVoiceBar();
+socket && socket.on('voice_speaking_update', (data) => {
+    if (voiceUsers[data.sid]) {
+        voiceUsers[data.sid].speaking = data.speaking;
+        updateVoiceBar();
+    }
 });
 
 function updateVoiceBar() {
   const bar = document.getElementById('voiceUsers');
-  const names = Object.keys(voiceUsers);
-  if (names.length === 0) {
+  const sids = Object.keys(voiceUsers);
+  if (sids.length === 0) {
     bar.innerHTML = '<span style="font-size:12px;color:var(--text2)">لا يوجد أحد في المحادثة الصوتية</span>';
     return;
   }
-  bar.innerHTML = names.map(n => {
-    const u = voiceUsers[n];
-    return `<div class="voice-user ${u && u.speaking ? 'speaking' : ''}">
-      ${u && u.speaking ? '🔊' : '🎤'} ${n}
+  bar.innerHTML = sids.map(sid => {
+    const u = voiceUsers[sid];
+    return `<div class="voice-user ${u.speaking ? 'speaking' : ''}">
+      ${u.speaking ? '🔊' : '🎤'} ${u.name}
     </div>`;
   }).join('');
 }
@@ -1969,7 +2065,10 @@ connect();
 </html>
 """
 
-application = app
-
 if __name__ == '__main__':
+    print("=" * 50)
+    print("🃏 لعبة UNO بالعربي")
+    print("=" * 50)
+    print("افتح المتصفح على: http://localhost:5000")
+    print("=" * 50)
     socketio.run(app, host='0.0.0.0', port=5000, debug=False)
