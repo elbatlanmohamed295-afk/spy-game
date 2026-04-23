@@ -1,34 +1,55 @@
 import os
+import traceback
 from flask import Flask, render_template_string, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
 
-# --- إعداد قاعدة البيانات (SQLite) ---
+# --- إعداد قاعدة البيانات بشكل آمن ---
 basedir = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'vitallink.db')
+db_path = os.path.join(basedir, 'vitallink.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + db_path
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# --- جدول المستخدم في الداتا بيز ---
+# --- جدول المستخدم ---
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     phone = db.Column(db.String(20), nullable=False)
     blood_type = db.Column(db.String(5), nullable=False)
-    diseases = db.Column(db.String(200)) # مفصولة بفاصلة
+    diseases = db.Column(db.String(200)) 
     allergies = db.Column(db.String(200))
 
-# --- تهيئة الداتا بيز وإضافة مستخدم تجريبي ---
-with app.app_context():
-    db.create_all()
-    if not User.query.first():
-        dummy_user = User(
-            name="شهد كمال", phone="0551234567", blood_type="AB+",
-            diseases="السكري, ضغط الدم", allergies="البنسلين, الفراولة"
-        )
-        db.session.add(dummy_user)
-        db.session.commit()
+# --- تأمين إنشاء الداتا بيز مع أول زيارة للموقع ---
+@app.before_request
+def setup_database():
+    try:
+        db.create_all()
+        if not User.query.first():
+            dummy_user = User(
+                name="شهد كمال", phone="0551234567", blood_type="AB+",
+                diseases="السكري, ضغط الدم", allergies="البنسلين, الفراولة"
+            )
+            db.session.add(dummy_user)
+            db.session.commit()
+    except Exception as e:
+        print("Database setup error:", e)
+
+# ==========================================
+# --- صائد الأخطاء (عشان لو حصل مشكلة تظهرلك بدل 500) ---
+# ==========================================
+@app.errorhandler(Exception)
+def handle_exception(e):
+    error_details = traceback.format_exc()
+    return f"""
+    <div style="direction: ltr; text-align: left; background: #ffebee; color: #b71c1c; padding: 20px; font-family: monospace;">
+        <h2>🚨 حصل خطأ في السيرفر! (Error 500)</h2>
+        <p><b>السبب:</b> {str(e)}</p>
+        <hr>
+        <pre>{error_details}</pre>
+    </div>
+    """, 500
 
 # ==========================================
 # --- التصميم والقوالب (CSS & HTML) ---
@@ -51,31 +72,14 @@ body { font-family: 'Segoe UI', Tahoma; background: var(--bg); direction: rtl; m
 .header-nav a { color: #333; text-decoration: none; font-size: 20px; }
 """
 
-HEADER_HTML = f"""
-<!DOCTYPE html>
-<html lang="ar">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VitalLink</title>
-    <style>{CSS}</style>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-</head>
-<body>
-    <div class="app-container">
-"""
-
-FOOTER_HTML = """
-    </div>
-</body>
-</html>
-"""
+HEADER_HTML = f"""<!DOCTYPE html><html lang="ar"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>VitalLink</title><style>{CSS}</style><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"></head><body><div class="app-container">"""
+FOOTER_HTML = """</div></body></html>"""
 
 INDEX_HTML = HEADER_HTML + """
 <div class="banner">
     <div class="avatar"><i class="fas fa-user"></i></div>
     <div>
-        <h3 style="margin: 0;">مرحباً {{ user.name }}</h3>
+        <h3 style="margin: 0;">مرحباً {{ user.name if user else 'زائر' }}</h3>
         <small>متصل بالنظام</small>
     </div>
 </div>
@@ -88,53 +92,44 @@ INDEX_HTML = HEADER_HTML + """
 """ + FOOTER_HTML
 
 PROFILE_HTML = HEADER_HTML + """
-<div class="header-nav">
-    <a href="/"><i class="fas fa-arrow-right"></i></a><span>الملف الشخصي</span>
-</div>
+<div class="header-nav"><a href="/"><i class="fas fa-arrow-right"></i></a><span>الملف الشخصي</span></div>
 <div class="card">
-    <div style="text-align: center; margin-bottom: 20px;">
-        <div class="avatar" style="margin: 0 auto;"><i class="fas fa-camera"></i></div>
-    </div>
+    <div style="text-align: center; margin-bottom: 20px;"><div class="avatar" style="margin: 0 auto;"><i class="fas fa-camera"></i></div></div>
     <form method="POST">
         <label>الاسم</label>
-        <input type="text" name="name" class="form-input" value="{{ user.name }}">
+        <input type="text" name="name" class="form-input" value="{{ user.name if user else '' }}">
         <label style="display: block; margin-top: 15px;">رقم الهاتف</label>
-        <input type="text" name="phone" class="form-input" value="{{ user.phone }}">
+        <input type="text" name="phone" class="form-input" value="{{ user.phone if user else '' }}">
         <button type="submit" class="btn">حفظ الملف الشخصي</button>
     </form>
 </div>
 """ + FOOTER_HTML
 
 MEDICAL_HTML = HEADER_HTML + """
-<div class="header-nav">
-    <a href="/"><i class="fas fa-arrow-right"></i></a><span>المعلومات الطبية</span>
-</div>
+<div class="header-nav"><a href="/"><i class="fas fa-arrow-right"></i></a><span>المعلومات الطبية</span></div>
 <div class="card">
-    <h4>فصيلة الدم</h4>
-    <span class="tag" style="font-size: 18px; background: #ffe4e1;">{{ user.blood_type }}</span>
+    <h4>فصيلة الدم</h4><span class="tag" style="font-size: 18px; background: #ffe4e1;">{{ user.blood_type if user else 'غير محدد' }}</span>
     <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
     <h4>الأمراض المزمنة</h4>
-    {% for disease in diseases %}
-        <span class="tag"><i class="fas fa-times-circle"></i> {{ disease.strip() }}</span>
-    {% endfor %}
+    {% for disease in diseases %}<span class="tag"><i class="fas fa-times-circle"></i> {{ disease.strip() }}</span>{% endfor %}
     <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
     <h4>الحساسية</h4>
-    {% for allergy in allergies %}
-        <span class="tag" style="background: #FFF3E0; color: #E65100;"><i class="fas fa-times-circle"></i> {{ allergy.strip() }}</span>
-    {% endfor %}
+    {% for allergy in allergies %}<span class="tag" style="background: #FFF3E0; color: #E65100;"><i class="fas fa-times-circle"></i> {{ allergy.strip() }}</span>{% endfor %}
 </div>
 """ + FOOTER_HTML
 
 QR_HTML = HEADER_HTML + """
-<div class="header-nav">
-    <a href="/"><i class="fas fa-arrow-right"></i></a><span>رمز الطوارئ</span>
-</div>
+<div class="header-nav"><a href="/"><i class="fas fa-arrow-right"></i></a><span>رمز الطوارئ</span></div>
 <div class="card" style="text-align: center;">
     <p><i class="fas fa-info-circle"></i> اعرض هذا الرمز في حالات الطوارئ.</p>
+    {% if user %}
     <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={{ request.url_root }}emergency/{{ user.id }}" alt="QR Code" style="margin: 20px 0; border-radius: 10px; max-width: 100%;">
     <div style="background:#f0f0f0; padding:10px; border-radius:10px; margin-top:10px; word-break:break-all; font-size:12px; direction: ltr;">
         {{ request.url_root }}emergency/{{ user.id }}
     </div>
+    {% else %}
+    <p style="color:red;">لا يوجد مستخدم لاستخراج الرمز</p>
+    {% endif %}
 </div>
 """ + FOOTER_HTML
 
@@ -146,10 +141,9 @@ EMERGENCY_HTML = HEADER_HTML + """
     <h3 style="color: var(--primary); text-align: center;">{{ user.name }}</h3>
     <p><b>فصيلة الدم:</b> <span class="tag" style="font-size: 16px;">{{ user.blood_type }}</span></p>
     <p><b>رقم الطوارئ:</b> <a href="tel:{{ user.phone }}" style="text-decoration: none; font-weight: bold; color: #d32f2f; direction: ltr; display: inline-block;">{{ user.phone }} <i class="fas fa-phone"></i></a></p>
-    
     <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
     <p><b>الأمراض المزمنة:</b></p>
-    {% for disease in user.diseases.split(',') %}
+    {% for disease in (user.diseases.split(',') if user.diseases else []) %}
         <span class="tag">{{ disease.strip() }}</span>
     {% endfor %}
 </div>
@@ -160,10 +154,7 @@ EMERGENCY_HTML = HEADER_HTML + """
             fetch('/api/location', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude
-                })
+                body: JSON.stringify({ lat: position.coords.latitude, lng: position.coords.longitude })
             });
         });
     }
@@ -182,7 +173,7 @@ def home():
 @app.route('/profile', methods=['GET', 'POST'])
 def profile():
     user = User.query.first()
-    if request.method == 'POST':
+    if request.method == 'POST' and user:
         user.name = request.form.get('name')
         user.phone = request.form.get('phone')
         db.session.commit()
@@ -191,8 +182,8 @@ def profile():
 @app.route('/medical')
 def medical():
     user = User.query.first()
-    diseases_list = user.diseases.split(',') if user.diseases else []
-    allergies_list = user.allergies.split(',') if user.allergies else []
+    diseases_list = user.diseases.split(',') if user and user.diseases else []
+    allergies_list = user.allergies.split(',') if user and user.allergies else []
     return render_template_string(MEDICAL_HTML, user=user, diseases=diseases_list, allergies=allergies_list)
 
 @app.route('/qr')
@@ -208,9 +199,8 @@ def emergency(user_id):
 @app.route('/api/location', methods=['POST'])
 def save_location():
     data = request.json
-    # هنا بيطبع الإحداثيات في كونسول السيرفر (تقدر تشوفها من شاشة Logs في Render)
     print(f"🚨 ALERT! Scanned at Lat: {data['lat']}, Lng: {data['lng']}")
-    return jsonify({"status": "success", "message": "Location logged"})
+    return jsonify({"status": "success"})
 
 if __name__ == '__main__':
     app.run(debug=True)
