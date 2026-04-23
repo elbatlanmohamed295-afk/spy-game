@@ -1,53 +1,62 @@
 import os
+import sqlite3
 import traceback
-from flask import Flask, render_template_string, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, render_template_string, request, jsonify, g
 
 app = Flask(__name__)
-
-# --- إعداد قاعدة البيانات بشكل آمن ---
-basedir = os.path.abspath(os.path.dirname(__file__))
-db_path = os.path.join(basedir, 'vitallink.db')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + db_path
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
-
-# --- جدول المستخدم ---
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    phone = db.Column(db.String(20), nullable=False)
-    blood_type = db.Column(db.String(5), nullable=False)
-    diseases = db.Column(db.String(200)) 
-    allergies = db.Column(db.String(200))
-
-# --- تأمين إنشاء الداتا بيز مع أول زيارة للموقع ---
-@app.before_request
-def setup_database():
-    try:
-        db.create_all()
-        if not User.query.first():
-            dummy_user = User(
-                name="شهد كمال", phone="0551234567", blood_type="AB+",
-                diseases="السكري, ضغط الدم", allergies="البنسلين, الفراولة"
-            )
-            db.session.add(dummy_user)
-            db.session.commit()
-    except Exception as e:
-        print("Database setup error:", e)
+DATABASE = 'vitallink.db'
 
 # ==========================================
-# --- صائد الأخطاء (عشان لو حصل مشكلة تظهرلك بدل 500) ---
+# --- إعداد الداتا بيز المدمجة (بدون مكتبات خارجية) ---
+# ==========================================
+def get_db():
+    db = getattr(g, '_database', None)
+    if db is None:
+        db = g._database = sqlite3.connect(DATABASE)
+        db.row_factory = sqlite3.Row  # عشان نقرأ البيانات كأنها قاموس
+    return db
+
+@app.teardown_appcontext
+def close_connection(exception):
+    db = getattr(g, '_database', None)
+    if db is not None:
+        db.close()
+
+# --- إنشاء الداتا بيز وتعبئة البيانات مع أول تشغيل ---
+@app.before_request
+def setup_database():
+    if getattr(app, '_db_initialized', False):
+        return
+    try:
+        db = get_db()
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS user (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT, phone TEXT, blood_type TEXT, diseases TEXT, allergies TEXT
+            )
+        ''')
+        cur = db.execute('SELECT COUNT(*) FROM user')
+        if cur.fetchone()[0] == 0:
+            db.execute('''
+                INSERT INTO user (name, phone, blood_type, diseases, allergies)
+                VALUES (?, ?, ?, ?, ?)
+            ''', ("شهد كمال", "0551234567", "AB+", "السكري, ضغط الدم", "البنسلين, الفراولة"))
+            db.commit()
+        app._db_initialized = True
+    except Exception as e:
+        print("Database error:", e)
+
+# ==========================================
+# --- صائد الأخطاء ---
 # ==========================================
 @app.errorhandler(Exception)
 def handle_exception(e):
     error_details = traceback.format_exc()
     return f"""
     <div style="direction: ltr; text-align: left; background: #ffebee; color: #b71c1c; padding: 20px; font-family: monospace;">
-        <h2>🚨 حصل خطأ في السيرفر! (Error 500)</h2>
+        <h2>🚨 حصل خطأ! (Error 500)</h2>
         <p><b>السبب:</b> {str(e)}</p>
-        <hr>
-        <pre>{error_details}</pre>
+        <hr><pre>{error_details}</pre>
     </div>
     """, 500
 
@@ -79,7 +88,7 @@ INDEX_HTML = HEADER_HTML + """
 <div class="banner">
     <div class="avatar"><i class="fas fa-user"></i></div>
     <div>
-        <h3 style="margin: 0;">مرحباً {{ user.name if user else 'زائر' }}</h3>
+        <h3 style="margin: 0;">مرحباً {{ user['name'] if user else 'زائر' }}</h3>
         <small>متصل بالنظام</small>
     </div>
 </div>
@@ -97,9 +106,9 @@ PROFILE_HTML = HEADER_HTML + """
     <div style="text-align: center; margin-bottom: 20px;"><div class="avatar" style="margin: 0 auto;"><i class="fas fa-camera"></i></div></div>
     <form method="POST">
         <label>الاسم</label>
-        <input type="text" name="name" class="form-input" value="{{ user.name if user else '' }}">
+        <input type="text" name="name" class="form-input" value="{{ user['name'] if user else '' }}">
         <label style="display: block; margin-top: 15px;">رقم الهاتف</label>
-        <input type="text" name="phone" class="form-input" value="{{ user.phone if user else '' }}">
+        <input type="text" name="phone" class="form-input" value="{{ user['phone'] if user else '' }}">
         <button type="submit" class="btn">حفظ الملف الشخصي</button>
     </form>
 </div>
@@ -108,7 +117,7 @@ PROFILE_HTML = HEADER_HTML + """
 MEDICAL_HTML = HEADER_HTML + """
 <div class="header-nav"><a href="/"><i class="fas fa-arrow-right"></i></a><span>المعلومات الطبية</span></div>
 <div class="card">
-    <h4>فصيلة الدم</h4><span class="tag" style="font-size: 18px; background: #ffe4e1;">{{ user.blood_type if user else 'غير محدد' }}</span>
+    <h4>فصيلة الدم</h4><span class="tag" style="font-size: 18px; background: #ffe4e1;">{{ user['blood_type'] if user else 'غير محدد' }}</span>
     <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
     <h4>الأمراض المزمنة</h4>
     {% for disease in diseases %}<span class="tag"><i class="fas fa-times-circle"></i> {{ disease.strip() }}</span>{% endfor %}
@@ -123,9 +132,9 @@ QR_HTML = HEADER_HTML + """
 <div class="card" style="text-align: center;">
     <p><i class="fas fa-info-circle"></i> اعرض هذا الرمز في حالات الطوارئ.</p>
     {% if user %}
-    <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={{ request.url_root }}emergency/{{ user.id }}" alt="QR Code" style="margin: 20px 0; border-radius: 10px; max-width: 100%;">
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={{ request.url_root }}emergency/{{ user['id'] }}" alt="QR Code" style="margin: 20px 0; border-radius: 10px; max-width: 100%;">
     <div style="background:#f0f0f0; padding:10px; border-radius:10px; margin-top:10px; word-break:break-all; font-size:12px; direction: ltr;">
-        {{ request.url_root }}emergency/{{ user.id }}
+        {{ request.url_root }}emergency/{{ user['id'] }}
     </div>
     {% else %}
     <p style="color:red;">لا يوجد مستخدم لاستخراج الرمز</p>
@@ -138,12 +147,12 @@ EMERGENCY_HTML = HEADER_HTML + """
     <h2><i class="fas fa-ambulance"></i> حالة طوارئ طبية</h2>
 </div>
 <div class="card">
-    <h3 style="color: var(--primary); text-align: center;">{{ user.name }}</h3>
-    <p><b>فصيلة الدم:</b> <span class="tag" style="font-size: 16px;">{{ user.blood_type }}</span></p>
-    <p><b>رقم الطوارئ:</b> <a href="tel:{{ user.phone }}" style="text-decoration: none; font-weight: bold; color: #d32f2f; direction: ltr; display: inline-block;">{{ user.phone }} <i class="fas fa-phone"></i></a></p>
+    <h3 style="color: var(--primary); text-align: center;">{{ user['name'] }}</h3>
+    <p><b>فصيلة الدم:</b> <span class="tag" style="font-size: 16px;">{{ user['blood_type'] }}</span></p>
+    <p><b>رقم الطوارئ:</b> <a href="tel:{{ user['phone'] }}" style="text-decoration: none; font-weight: bold; color: #d32f2f; direction: ltr; display: inline-block;">{{ user['phone'] }} <i class="fas fa-phone"></i></a></p>
     <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
     <p><b>الأمراض المزمنة:</b></p>
-    {% for disease in (user.diseases.split(',') if user.diseases else []) %}
+    {% for disease in (user['diseases'].split(',') if user['diseases'] else []) %}
         <span class="tag">{{ disease.strip() }}</span>
     {% endfor %}
 </div>
@@ -167,33 +176,41 @@ EMERGENCY_HTML = HEADER_HTML + """
 
 @app.route('/')
 def home():
-    user = User.query.first()
+    db = get_db()
+    user = db.execute('SELECT * FROM user LIMIT 1').fetchone()
     return render_template_string(INDEX_HTML, user=user)
 
 @app.route('/profile', methods=['GET', 'POST'])
 def profile():
-    user = User.query.first()
-    if request.method == 'POST' and user:
-        user.name = request.form.get('name')
-        user.phone = request.form.get('phone')
-        db.session.commit()
+    db = get_db()
+    if request.method == 'POST':
+        name = request.form.get('name')
+        phone = request.form.get('phone')
+        db.execute('UPDATE user SET name = ?, phone = ? WHERE id = 1', (name, phone))
+        db.commit()
+    user = db.execute('SELECT * FROM user LIMIT 1').fetchone()
     return render_template_string(PROFILE_HTML, user=user)
 
 @app.route('/medical')
 def medical():
-    user = User.query.first()
-    diseases_list = user.diseases.split(',') if user and user.diseases else []
-    allergies_list = user.allergies.split(',') if user and user.allergies else []
+    db = get_db()
+    user = db.execute('SELECT * FROM user LIMIT 1').fetchone()
+    diseases_list = user['diseases'].split(',') if user and user['diseases'] else []
+    allergies_list = user['allergies'].split(',') if user and user['allergies'] else []
     return render_template_string(MEDICAL_HTML, user=user, diseases=diseases_list, allergies=allergies_list)
 
 @app.route('/qr')
 def qr_page():
-    user = User.query.first()
+    db = get_db()
+    user = db.execute('SELECT * FROM user LIMIT 1').fetchone()
     return render_template_string(QR_HTML, user=user)
 
 @app.route('/emergency/<int:user_id>')
 def emergency(user_id):
-    user = User.query.get_or_404(user_id)
+    db = get_db()
+    user = db.execute('SELECT * FROM user WHERE id = ?', (user_id,)).fetchone()
+    if user is None:
+        return "<h2 style='text-align:center;'>مستخدم غير موجود</h2>", 404
     return render_template_string(EMERGENCY_HTML, user=user)
 
 @app.route('/api/location', methods=['POST'])
