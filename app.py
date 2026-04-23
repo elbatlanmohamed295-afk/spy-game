@@ -1,186 +1,216 @@
+import os
 from flask import Flask, render_template_string, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
 
-# --- الإعدادات والبيانات (مطابقة لطلبك: شهد كمال) ---
-USER_DATA = {
-    "name": "شهد كمال",
-    "phone": "0551234567",
-    "blood_type": "AB+",
-    "diseases": ["test1", "test2", "test3", "test4"],
-    "allergies": ["test1", "test2"],
-    "medications": ["test1", "test2", "test3"],
-    "emergency_contact": {"name": "شهد كمال", "relation": "friend", "phone": "0123456789"}
-}
+# --- إعداد قاعدة البيانات (SQLite) ---
+basedir = os.path.abspath(os.path.dirname(__file__))
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'vitallink.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
 
-# --- نظام التنسيق CSS (مستوحى من الصور بالكامل) ---
+# --- جدول المستخدم في الداتا بيز ---
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    phone = db.Column(db.String(20), nullable=False)
+    blood_type = db.Column(db.String(5), nullable=False)
+    diseases = db.Column(db.String(200)) # مفصولة بفاصلة
+    allergies = db.Column(db.String(200))
+
+# --- تهيئة الداتا بيز وإضافة مستخدم تجريبي ---
+with app.app_context():
+    db.create_all()
+    if not User.query.first():
+        dummy_user = User(
+            name="شهد كمال", phone="0551234567", blood_type="AB+",
+            diseases="السكري, ضغط الدم", allergies="البنسلين, الفراولة"
+        )
+        db.session.add(dummy_user)
+        db.session.commit()
+
+# ==========================================
+# --- التصميم والقوالب (CSS & HTML) ---
+# ==========================================
+
 CSS = """
-:root {
-    --primary: #8E4C4C; 
-    --bg-light: #F8FAFC;
-    --card-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-}
-body { 
-    font-family: 'Segoe UI', Tahoma; background: var(--bg-light); 
-    direction: rtl; margin: 0; padding: 0; color: #333;
-}
-.app-container { max-width: 500px; margin: auto; padding: 20px; }
-.header { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; }
-.banner { 
-    background: linear-gradient(135deg, #FFE4E1 0%, #FFDAB9 100%);
-    padding: 25px; border-radius: 24px; display: flex; align-items: center; gap: 15px;
-    margin-bottom: 25px; box-shadow: var(--card-shadow);
-}
-.avatar { width: 65px; height: 65px; background: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 30px; }
+:root { --primary: #8E4C4C; --bg: #F4F7FA; --card: #FFFFFF; }
+body { font-family: 'Segoe UI', Tahoma; background: var(--bg); direction: rtl; margin: 0; padding: 20px; color: #333; }
+.app-container { max-width: 450px; margin: 0 auto; }
+.card { background: var(--card); border-radius: 20px; padding: 20px; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+.banner { background: linear-gradient(90deg, #FFE4E1, #FFDAB9); padding: 20px; border-radius: 20px; display: flex; align-items: center; gap: 15px; }
+.avatar { width: 60px; height: 60px; background: var(--primary); border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-size: 24px; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-.card { 
-    background: white; padding: 20px; border-radius: 20px; 
-    text-align: center; text-decoration: none; color: inherit;
-    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); transition: 0.3s;
-}
-.card:active { transform: scale(0.95); }
-.card i { font-size: 24px; color: var(--primary); margin-bottom: 10px; display: block; }
-.input-group { background: white; padding: 15px; border-radius: 15px; margin-bottom: 10px; border: 1px solid #eee; }
-.tag { background: #FEE2E2; color: #991B1B; padding: 6px 12px; border-radius: 12px; margin: 4px; display: inline-block; font-size: 14px; }
-.btn-save { background: var(--primary); color: white; width: 100%; padding: 15px; border: none; border-radius: 15px; font-size: 18px; cursor: pointer; margin-top: 20px; }
-.qr-container { background: white; padding: 30px; border-radius: 30px; text-align: center; box-shadow: var(--card-shadow); }
-#location-status { font-size: 12px; color: #666; margin-top: 10px; }
+.grid-item { background: white; padding: 20px; border-radius: 15px; text-align: center; text-decoration: none; color: #333; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: block; }
+.grid-item i { font-size: 24px; color: var(--primary); margin-bottom: 10px; }
+.tag { background: #FFEBEE; color: #D32F2F; padding: 5px 12px; border-radius: 15px; display: inline-block; margin: 5px 0; font-size: 14px; }
+.form-input { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-family: inherit; }
+.btn { background: var(--primary); color: white; border: none; padding: 15px; border-radius: 12px; width: 100%; font-size: 16px; cursor: pointer; margin-top: 15px; }
+.header-nav { display: flex; align-items: center; gap: 15px; margin-bottom: 20px; font-weight: bold; font-size: 18px; }
+.header-nav a { color: #333; text-decoration: none; font-size: 20px; }
 """
 
-# --- القالب الرئيسي (Base Template) ---
-BASE_HTML = """
+HEADER_HTML = f"""
 <!DOCTYPE html>
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VitalLink - شهد كمال</title>
-    <style>{{ css | safe }}</style>
+    <title>VitalLink</title>
+    <style>{CSS}</style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
     <div class="app-container">
-        {% block content %}{% endblock %}
+"""
+
+FOOTER_HTML = """
     </div>
 </body>
 </html>
 """
 
-# --- الصفحات ---
-HOME_HTML = """
-{% extends "base" %}
-{% block content %}
-<div class="header">
-    <h2>VitalLink Home</h2>
-    <div><i class="fas fa-moon"></i> <i class="fas fa-globe" style="margin-right:10px;"></i></div>
-</div>
+INDEX_HTML = HEADER_HTML + """
 <div class="banner">
     <div class="avatar"><i class="fas fa-user"></i></div>
     <div>
-        <h3 style="margin:0;">مرحباً {{ user.name }}</h3>
-        <small>متصل بالخادم الخلفي (Render)</small>
+        <h3 style="margin: 0;">مرحباً {{ user.name }}</h3>
+        <small>متصل بالنظام</small>
     </div>
 </div>
-<h4>وصول سريع</h4>
+<h3 style="margin-top: 20px;">وصول سريع</h3>
 <div class="grid">
-    <a href="/profile" class="card"><i class="fas fa-user-circle"></i> الملف الشخصي</a>
-    <a href="/medical" class="card"><i class="fas fa-file-medical"></i> المعلومات الطبية</a>
-    <a href="/contacts" class="card"><i class="fas fa-address-book"></i> جهات الطوارئ</a>
-    <a href="/qr" class="card"><i class="fas fa-qrcode"></i> رمز الطوارئ</a>
+    <a href="/profile" class="grid-item"><i class="fas fa-user-circle"></i><br>الملف الشخصي</a>
+    <a href="/medical" class="grid-item"><i class="fas fa-briefcase-medical"></i><br>البيانات الطبية</a>
+    <a href="/qr" class="grid-item"><i class="fas fa-qrcode"></i><br>رمز الطوارئ</a>
 </div>
-{% endblock %}
-"""
+""" + FOOTER_HTML
 
-QR_HTML = """
-{% extends "base" %}
-{% block content %}
-<div class="header">
-    <a href="/" style="color:black;"><i class="fas fa-arrow-right"></i></a>
-    <h2>رمز الطوارئ</h2>
+PROFILE_HTML = HEADER_HTML + """
+<div class="header-nav">
+    <a href="/"><i class="fas fa-arrow-right"></i></a><span>الملف الشخصي</span>
 </div>
-<div class="qr-container">
-    <p><i class="fas fa-info-circle"></i> اعرض هذا الرمز في حالات الطوارئ.</p>
-    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ request.url_root }}emergency" alt="QR Code">
-    <div style="background:#f0f0f0; padding:10px; border-radius:10px; margin-top:20px; word-break:break-all; font-size:12px;">
-        {{ request.url_root }}emergency
+<div class="card">
+    <div style="text-align: center; margin-bottom: 20px;">
+        <div class="avatar" style="margin: 0 auto;"><i class="fas fa-camera"></i></div>
     </div>
-    <div id="location-status">جاري فحص حالة نظام التتبع...</div>
+    <form method="POST">
+        <label>الاسم</label>
+        <input type="text" name="name" class="form-input" value="{{ user.name }}">
+        <label style="display: block; margin-top: 15px;">رقم الهاتف</label>
+        <input type="text" name="phone" class="form-input" value="{{ user.phone }}">
+        <button type="submit" class="btn">حفظ الملف الشخصي</button>
+    </form>
 </div>
-{% endblock %}
-"""
+""" + FOOTER_HTML
 
-EMERGENCY_VIEW = """
-{% extends "base" %}
-{% block content %}
-<div style="text-align:center; color:white; background:red; padding:15px; border-radius:15px;">
-    <h2>حالة طوارئ نشطة!</h2>
+MEDICAL_HTML = HEADER_HTML + """
+<div class="header-nav">
+    <a href="/"><i class="fas fa-arrow-right"></i></a><span>المعلومات الطبية</span>
 </div>
-<div class="card" style="margin-top:20px; text-align:right;">
-    <h3>بيانات المصاب: {{ user.name }}</h3>
-    <p><b>فصيلة الدم:</b> <span class="tag">{{ user.blood_type }}</span></p>
-    <p><b>الأمراض:</b> {% for d in user.diseases %}<span class="tag">{{ d }}</span>{% endfor %}</p>
+<div class="card">
+    <h4>فصيلة الدم</h4>
+    <span class="tag" style="font-size: 18px; background: #ffe4e1;">{{ user.blood_type }}</span>
+    <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
+    <h4>الأمراض المزمنة</h4>
+    {% for disease in diseases %}
+        <span class="tag"><i class="fas fa-times-circle"></i> {{ disease.strip() }}</span>
+    {% endfor %}
+    <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
+    <h4>الحساسية</h4>
+    {% for allergy in allergies %}
+        <span class="tag" style="background: #FFF3E0; color: #E65100;"><i class="fas fa-times-circle"></i> {{ allergy.strip() }}</span>
+    {% endfor %}
 </div>
+""" + FOOTER_HTML
+
+QR_HTML = HEADER_HTML + """
+<div class="header-nav">
+    <a href="/"><i class="fas fa-arrow-right"></i></a><span>رمز الطوارئ</span>
+</div>
+<div class="card" style="text-align: center;">
+    <p><i class="fas fa-info-circle"></i> اعرض هذا الرمز في حالات الطوارئ.</p>
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={{ request.url_root }}emergency/{{ user.id }}" alt="QR Code" style="margin: 20px 0; border-radius: 10px; max-width: 100%;">
+    <div style="background:#f0f0f0; padding:10px; border-radius:10px; margin-top:10px; word-break:break-all; font-size:12px; direction: ltr;">
+        {{ request.url_root }}emergency/{{ user.id }}
+    </div>
+</div>
+""" + FOOTER_HTML
+
+EMERGENCY_HTML = HEADER_HTML + """
+<div style="background: #d32f2f; color: white; padding: 15px; border-radius: 15px; text-align: center; margin-bottom: 20px;">
+    <h2><i class="fas fa-ambulance"></i> حالة طوارئ طبية</h2>
+</div>
+<div class="card">
+    <h3 style="color: var(--primary); text-align: center;">{{ user.name }}</h3>
+    <p><b>فصيلة الدم:</b> <span class="tag" style="font-size: 16px;">{{ user.blood_type }}</span></p>
+    <p><b>رقم الطوارئ:</b> <a href="tel:{{ user.phone }}" style="text-decoration: none; font-weight: bold; color: #d32f2f; direction: ltr; display: inline-block;">{{ user.phone }} <i class="fas fa-phone"></i></a></p>
+    
+    <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
+    <p><b>الأمراض المزمنة:</b></p>
+    {% for disease in user.diseases.split(',') %}
+        <span class="tag">{{ disease.strip() }}</span>
+    {% endfor %}
+</div>
+
 <script>
-    // أول ما الكود يتفتح، يبعت الموقع فوراً للسيرفر
-    navigator.geolocation.getCurrentPosition(pos => {
-        fetch('/log_location', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({lat: pos.coords.latitude, lng: pos.coords.longitude})
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function(position) {
+            fetch('/api/location', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                })
+            });
         });
-    });
+    }
 </script>
-{% endblock %}
-"""
+""" + FOOTER_HTML
 
+# ==========================================
 # --- الروابط (Routes) ---
+# ==========================================
+
 @app.route('/')
 def home():
-    return render_template_string(BASE_HTML + HOME_HTML, css=CSS, user=USER_DATA)
+    user = User.query.first()
+    return render_template_string(INDEX_HTML, user=user)
 
-@app.route('/profile')
+@app.route('/profile', methods=['GET', 'POST'])
 def profile():
-    return render_template_string(BASE_HTML + """
-    {% extends "base" %}
-    {% block content %}
-    <div class="header"><a href="/" style="color:black;"><i class="fas fa-arrow-right"></i></a><h2>الملف الشخصي</h2></div>
-    <div class="card"><div class="avatar" style="margin:auto;"><i class="fas fa-camera"></i></div></div>
-    <div class="input-group"><label>الاسم</label><br><b>{{ user.name }}</b></div>
-    <div class="input-group"><label>رقم الموبايل</label><br><b>{{ user.phone }}</b></div>
-    <button class="btn-save">حفظ الملف الشخصي</button>
-    {% endblock %}
-    """, css=CSS, user=USER_DATA)
+    user = User.query.first()
+    if request.method == 'POST':
+        user.name = request.form.get('name')
+        user.phone = request.form.get('phone')
+        db.session.commit()
+    return render_template_string(PROFILE_HTML, user=user)
 
 @app.route('/medical')
 def medical():
-    return render_template_string(BASE_HTML + """
-    {% extends "base" %}
-    {% block content %}
-    <div class="header"><a href="/" style="color:black;"><i class="fas fa-arrow-right"></i></a><h2>المعلومات الطبية</h2></div>
-    <div class="card" style="text-align:right;">
-        <h4>فصيلة الدم</h4><span class="tag">{{ user.blood_type }}</span>
-        <hr><h4>الأمراض</h4>{% for d in user.diseases %}<span class="tag">{{ d }}</span>{% endfor %}
-        <hr><h4>الأدوية</h4>{% for m in user.medications %}<span class="tag">{{ m }}</span>{% endfor %}
-    </div>
-    {% endblock %}
-    """, css=CSS, user=USER_DATA)
+    user = User.query.first()
+    diseases_list = user.diseases.split(',') if user.diseases else []
+    allergies_list = user.allergies.split(',') if user.allergies else []
+    return render_template_string(MEDICAL_HTML, user=user, diseases=diseases_list, allergies=allergies_list)
 
 @app.route('/qr')
 def qr_page():
-    return render_template_string(BASE_HTML + QR_HTML, css=CSS)
+    user = User.query.first()
+    return render_template_string(QR_HTML, user=user)
 
-@app.route('/emergency')
-def emergency():
-    return render_template_string(BASE_HTML + EMERGENCY_VIEW, css=CSS, user=USER_DATA)
+@app.route('/emergency/<int:user_id>')
+def emergency(user_id):
+    user = User.query.get_or_404(user_id)
+    return render_template_string(EMERGENCY_HTML, user=user)
 
-@app.route('/log_location', methods=['POST'])
-def log_location():
+@app.route('/api/location', methods=['POST'])
+def save_location():
     data = request.json
-    print(f"ALERT: QR Scanned at Lat: {data['lat']}, Lng: {data['lng']}")
-    return jsonify({"status": "received"})
-
-@app.route('/base')
-def base(): return render_template_string(BASE_HTML, css=CSS)
+    # هنا بيطبع الإحداثيات في كونسول السيرفر (تقدر تشوفها من شاشة Logs في Render)
+    print(f"🚨 ALERT! Scanned at Lat: {data['lat']}, Lng: {data['lng']}")
+    return jsonify({"status": "success", "message": "Location logged"})
 
 if __name__ == '__main__':
     app.run(debug=True)
